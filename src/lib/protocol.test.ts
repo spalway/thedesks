@@ -4,7 +4,7 @@ import { TIERS, tierForId } from './tiers'
 import { SKILLS, rollSkills, blendedApy, effectiveApy } from './skills'
 import { buildXployee, MAX_SUPPLY } from './xployee'
 import { accruedTotal, bookValue, trailingApy, EPOCH_MS } from './accrual'
-import { collection, HIRED_COUNT, mintOrder } from './collection'
+import { collection, HIRED_COUNT, mintOrder, serialForMint, tierCounts } from './collection'
 import { contractMath, type ContractListing } from './market'
 import { buildAvatar, GRID } from './avatar'
 import { UNIFORMS, HEADS, FACES } from './xployee'
@@ -125,13 +125,18 @@ describe('reveal order', () => {
   })
 
   it('still reveals rarities in roughly their declared proportions', () => {
+    // Sampled over 500 draws, NOT over HIRED_COUNT. The genesis crew is 35 and
+    // deliberately shaped (2/3/10/20) rather than drawn naturally, so measuring
+    // the permutation through it would be measuring the hand-picked quota. This
+    // asserts the property that actually matters: what a real minter faces.
+    const SAMPLE = 500
     const counts: Record<string, number> = {}
-    for (const id of mintOrder().slice(0, HIRED_COUNT)) {
+    for (const id of mintOrder().slice(0, SAMPLE)) {
       const t = tierForId(id, MAX_SUPPLY).id
       counts[t] = (counts[t] ?? 0) + 1
     }
     for (const tier of TIERS) {
-      const share = (counts[tier.id] ?? 0) / HIRED_COUNT
+      const share = (counts[tier.id] ?? 0) / SAMPLE
       expect(Math.abs(share - tier.supply)).toBeLessThan(0.05)
     }
   })
@@ -252,10 +257,35 @@ describe('collection', () => {
   })
 
   it('regenerates identically across calls', () => {
-    const a = collection()[100]
-    const b = collection()[100]
+    // Index inside the genesis crew, which is 35 rather than the 512 this once
+    // assumed. Reading past the end returned undefined and failed on `.mint`
+    // with a message that said nothing about the real cause.
+    const at = HIRED_COUNT - 1
+    const a = collection()[at]
+    const b = collection()[at]
     expect(a.mint).toBe(b.mint)
     expect(a.tier.id).toBe(b.tier.id)
+  })
+
+  it('has exactly the genesis crew the launch is configured for', () => {
+    const counts = tierCounts()
+    expect(counts.xrated).toBe(2)
+    expect(counts.expert).toBe(3)
+    expect(counts.mid).toBe(10)
+    expect(counts.entry).toBe(20)
+    expect(collection()).toHaveLength(35)
+  })
+
+  it('does not hand a new minter a serial the genesis crew already holds', () => {
+    // The crew is drawn from the reveal order but filtered by tier, so it is not
+    // a prefix of that order — the next mint has to skip what is taken.
+    const taken = new Set(collection().map((x) => x.id))
+    for (let position = 0; position < 40; position++) {
+      expect(taken.has(serialForMint(position))).toBe(false)
+    }
+    // And still deals distinct serials to distinct positions.
+    const dealt = new Set(Array.from({ length: 40 }, (_, i) => serialForMint(i)))
+    expect(dealt.size).toBe(40)
   })
 
   it('contains at least one of every tier', () => {

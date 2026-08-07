@@ -1,47 +1,47 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1500" height="500" viewBox="0 0 1500 500">
   <rect width="1500" height="500" fill="#ffffff"/>
-
-  <!-- The wordmark sits well right of centre-left: X overlays the avatar at the
-       bottom-left of a header, and anything under roughly x=300 is covered. -->
-  
-    <text x="300" y="248" fill="#000000" font-family="M42_FLIGHT 721" letter-spacing="3">
-      <tspan font-size="57">X</tspan><tspan font-size="100">NFT</tspan><tspan font-size="57">S</tspan>
-    </text>
-
-  <text x="304" y="304" font-family="Segoe UI, Arial, sans-serif" font-size="27"
-        font-weight="700" letter-spacing="2.4" fill="#000000">POWERED BY XSTOCKS</text>
-
-  <text x="304" y="346" font-family="Segoe UI, Arial, sans-serif" font-size="23" fill="#5f5f5f">
-    You don't buy a token. You hire an employee.
-  </text>
-
-  <!-- Vertical rule then the tape, echoing the header divider on the site. -->
-  <rect x="1010" y="150" width="2" height="200" fill="#000000" opacity="0.18"/>
-
-  
-    <g font-family="Consolas, 'Courier New', monospace">
-      <text x="1070" y="178" font-size="26" fill="#000000" font-weight="700">$NVDAx</text>
-      <text x="1260" y="178" font-size="26" fill="#000000" text-anchor="end">$205.76</text>
-      <text x="1390" y="178" font-size="24" fill="#157f3a" text-anchor="end">▲ 1.84%</text>
-    </g>
-  
-    <g font-family="Consolas, 'Courier New', monospace">
-      <text x="1070" y="226" font-size="26" fill="#000000" font-weight="700">$AAPLx</text>
-      <text x="1260" y="226" font-size="26" fill="#000000" text-anchor="end">$302.61</text>
-      <text x="1390" y="226" font-size="24" fill="#157f3a" text-anchor="end">▲ 0.42%</text>
-    </g>
-  
-    <g font-family="Consolas, 'Courier New', monospace">
-      <text x="1070" y="274" font-size="26" fill="#000000" font-weight="700">$MSFTx</text>
-      <text x="1260" y="274" font-size="26" fill="#000000" text-anchor="end">$481.07</text>
-      <text x="1390" y="274" font-size="24" fill="#dc2626" text-anchor="end">▼ 0.63%</text>
-    </g>
-  
-    <g font-family="Consolas, 'Courier New', monospace">
-      <text x="1070" y="322" font-size="26" fill="#000000" font-weight="700">$SPYx</text>
-      <text x="1260" y="322" font-size="26" fill="#000000" text-anchor="end">$771.84</text>
-      <text x="1390" y="322" font-size="24" fill="#157f3a" text-anchor="end">▲ 0.16%</text>
-    </g>
-
-  <rect x="0" y="488" width="375" height="12" fill="#44af63"/><rect x="375" y="488" width="375" height="12" fill="#1d84de"/><rect x="750" y="488" width="375" height="12" fill="#d211b0"/><rect x="1125" y="488" width="375" height="12" fill="#ff1b1b"/>
+  <rect x="624" y="226" width="360" height="12" fill="#ddc9a4"/>
+  <rect x="612" y="238" width="360" height="12" fill="#c8b48f"/>
+  <rect x="600" y="250" width="360" height="12" fill="#c8b48f"/>
+  <rect x="588" y="262" width="360" height="12" fill="#c8b48f"/>
+  <rect x="576" y="274" width="360" height="12" fill="#c8b48f"/>
+  <rect x="564" y="286" width="360" height="12" fill="#c8b48f"/>
+  <rect x="552" y="298" width="360" height="12" fill="#c8b48f"/>
+  <rect x="540" y="310" width="360" height="12" fill="#c8b48f"/>
+  <rect x="528" y="322" width="360" height="12" fill="#c8b48f"/>
+  <rect x="516" y="334" width="360" height="24" fill="#a08d6b"/>
+  <rect x="516" y="358" width="24" height="84" fill="#a08d6b"/>
+  <rect x="852" y="358" width="24" height="84" fill="#a08d6b"/>
+  <rect x="732" y="58" width="156" height="108" fill="#15131b"/>
+  <rect x="744" y="70" width="132" height="84" fill="#1d2b24"/>
+  <rect x="756" y="130" width="12" height="24" fill="#3ddc84"/>
+  <rect x="768" y="118" width="12" height="36" fill="#3ddc84"/>
+  <rect x="780" y="130" width="12" height="24" fill="#3ddc84"/>
+  <rect x="792" y="106" width="12" height="48" fill="#3ddc84"/>
+  <rect x="804" y="94" width="12" height="60" fill="#3ddc84"/>
+  <rect x="816" y="106" width="12" height="48" fill="#3ddc84"/>
+  <rect x="828" y="82" width="12" height="72" fill="#3ddc84"/>
+  <rect x="792" y="166" width="36" height="24" fill="#15131b"/>
+  <rect x="780" y="190" width="60" height="12" fill="#15131b"/>
+  <rect x="612" y="166" width="72" height="60" fill="#3b2a1e"/>
+  <rect x="624" y="202" width="48" height="36" fill="#f0c9a0"/>
+  <rect x="612" y="226" width="72" height="12" fill="#d3a77e"/>
+  <rect x="600" y="238" width="96" height="72" fill="#2b2f3d"/>
+  <rect x="600" y="238" width="96" height="12" fill="#1a1d27"/>
+  <rect x="588" y="262" width="12" height="48" fill="#1a1d27"/>
+  <rect x="696" y="262" width="12" height="48" fill="#1a1d27"/>
+  <rect x="696" y="298" width="24" height="12" fill="#f0c9a0"/>
+  <rect x="576" y="298" width="24" height="12" fill="#f0c9a0"/>
+  <rect x="588" y="310" width="120" height="12" fill="#4a4a52"/>
+  <rect x="588" y="322" width="12" height="48" fill="#4a4a52"/>
+  <rect x="696" y="322" width="12" height="48" fill="#4a4a52"/>
+  <rect x="528" y="274" width="60" height="24" fill="#3ddc84"/>
+  <rect x="552" y="280" width="12" height="12" fill="#0f7a44"/>
+  <rect x="532.8" y="266.79999999999995" width="60" height="24" fill="#3ddc84"/>
+  <rect x="556.8" y="272.79999999999995" width="12" height="12" fill="#0f7a44"/>
+  <rect x="537.6" y="259.6" width="60" height="24" fill="#5fe89b"/>
+  <rect x="561.6" y="265.6" width="12" height="12" fill="#0f7a44"/>
+  <rect x="780" y="238" width="24" height="24" fill="#e8c96a"/>
+  <rect x="804" y="250" width="24" height="24" fill="#d8b34a"/>
+  <rect x="756" y="262" width="24" height="24" fill="#e8c96a"/>
 </svg>

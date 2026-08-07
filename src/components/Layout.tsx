@@ -6,6 +6,7 @@ import { shortAddress } from '../lib/format'
 import { useNow } from '../lib/useNow'
 import { EarningsPill } from './EarningsPill'
 import { InboxButton } from './Inbox'
+import { XButton } from './XButton'
 import { useRuntimeConfig } from '../lib/useRuntimeConfig'
 import { TickerTape } from './TickerTape'
 
@@ -270,6 +271,7 @@ function Header() {
           <EarningsPill />
           <WalletMenu />
           <InboxButton address={address} now={now} />
+          <XButton />
         </div>
       </div>
     </header>

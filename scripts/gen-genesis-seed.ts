@@ -1,6 +1,44 @@
--- xNFTs index — seed: the genesis crew.
+// Emit the genesis-crew seed from the JS source of truth.
+//
+// The previous version of this migration was hand-written and encoded 512
+// xployees across 97 invented wallets. It is now 35 held by the project wallet,
+// and hand-editing that a second time is how the database and the app drift
+// apart. This imports the same `collection()` the browser renders, so the two
+// cannot disagree — regenerate rather than edit.
+//
+//   npx vite-node scripts/gen-genesis-seed.ts
+import { writeFileSync } from 'node:fs'
+import { collection, GENESIS_CREW, HIRED_COUNT } from '../src/lib/collection'
+
+const OUT =
+  'C:/Users/skizp/crypto/new_projects/xnfts/supabase/migrations/20260806090500_seed_xnet_genesis.sql'
+
+/**
+ * Placeholder owner.
+ *
+ * The real owner is the project wallet, whose address lives in
+ * `protocol_config` and is not known when this migration is written — it is set
+ * by an operator after deploy. Seeding a literal here would bake in whatever
+ * address happened to be current, and a stale owner on a money-adjacent table is
+ * worse than an obviously-unset one.
+ *
+ * `assign_genesis_crew()` below resolves it. Until it is run, these rows are
+ * owned by a string that is visibly not a wallet, which is the correct reading:
+ * ownership has not been claimed yet.
+ */
+const SENTINEL = 'GENESIS-UNASSIGNED'
+
+const crew = collection()
+
+const rows = crew
+  .map((x) => `  (${x.id}, '${SENTINEL}', ${Math.round(x.hiredAt)})`)
+  .join(',\n')
+
+const summary = GENESIS_CREW.map((g) => `${g.count} ${g.tier}`).join(', ')
+
+const sql = `-- xNFTs index — seed: the genesis crew.
 --
--- 35 xployees (2 xrated, 3 expert, 10 mid, 20 entry), held by the project wallet.
+-- ${HIRED_COUNT} xployees (${summary}), held by the project wallet.
 --
 -- GENERATED — do not edit by hand. Run:
 --   npx vite-node scripts/gen-genesis-seed.ts
@@ -10,9 +48,9 @@
 -- addresses existed, and a protocol on its first day showing a hundred holders
 -- and an active secondary market is claiming a history it does not have.
 --
--- The serials below are not the first 35 of the reveal permutation. They are
+-- The serials below are not the first ${HIRED_COUNT} of the reveal permutation. They are
 -- drawn from it in order but filtered to a fixed rarity mix, so a cold visit
--- shows every tier including X-RATED — which a natural draw of 35 usually would
+-- shows every tier including X-RATED — which a natural draw of ${HIRED_COUNT} usually would
 -- not. src/lib/collection.ts is the source; this file is its output.
 --
 -- Ownership is a placeholder until an operator runs assign_genesis_crew().
@@ -32,41 +70,7 @@ create policy genesis_crew_read
 revoke insert, update, delete on public.genesis_crew from anon, authenticated;
 
 insert into public.genesis_crew (serial, owner, hired_at) values
-  (2867, 'GENESIS-UNASSIGNED', 1767657600000),
-  (995, 'GENESIS-UNASSIGNED', 1767986670251),
-  (3679, 'GENESIS-UNASSIGNED', 1768651490308),
-  (3355, 'GENESIS-UNASSIGNED', 1768944821328),
-  (1885, 'GENESIS-UNASSIGNED', 1769569224991),
-  (62, 'GENESIS-UNASSIGNED', 1769910465286),
-  (2967, 'GENESIS-UNASSIGNED', 1770346456301),
-  (2234, 'GENESIS-UNASSIGNED', 1770863633311),
-  (3928, 'GENESIS-UNASSIGNED', 1771354114351),
-  (2227, 'GENESIS-UNASSIGNED', 1771484494534),
-  (2638, 'GENESIS-UNASSIGNED', 1772230185173),
-  (2007, 'GENESIS-UNASSIGNED', 1772682735848),
-  (3020, 'GENESIS-UNASSIGNED', 1773102434541),
-  (4745, 'GENESIS-UNASSIGNED', 1773585814547),
-  (4511, 'GENESIS-UNASSIGNED', 1773790636519),
-  (284, 'GENESIS-UNASSIGNED', 1774293838924),
-  (2823, 'GENESIS-UNASSIGNED', 1774884843479),
-  (3480, 'GENESIS-UNASSIGNED', 1775144992924),
-  (731, 'GENESIS-UNASSIGNED', 1775616238942),
-  (4109, 'GENESIS-UNASSIGNED', 1776009429812),
-  (1852, 'GENESIS-UNASSIGNED', 1776584993621),
-  (3354, 'GENESIS-UNASSIGNED', 1777122024305),
-  (3591, 'GENESIS-UNASSIGNED', 1777379645745),
-  (3138, 'GENESIS-UNASSIGNED', 1777994586764),
-  (295, 'GENESIS-UNASSIGNED', 1778394502750),
-  (2087, 'GENESIS-UNASSIGNED', 1778873094175),
-  (3863, 'GENESIS-UNASSIGNED', 1779234216680),
-  (1291, 'GENESIS-UNASSIGNED', 1779592342265),
-  (1289, 'GENESIS-UNASSIGNED', 1780052283096),
-  (1261, 'GENESIS-UNASSIGNED', 1780514789959),
-  (1706, 'GENESIS-UNASSIGNED', 1781051749925),
-  (42, 'GENESIS-UNASSIGNED', 1781311199844),
-  (1200, 'GENESIS-UNASSIGNED', 1782044619537),
-  (786, 'GENESIS-UNASSIGNED', 1782479171317),
-  (1532, 'GENESIS-UNASSIGNED', 1782897129998)
+${rows}
 on conflict (serial) do nothing;
 
 -- ---------------------------------------------------------------------------
@@ -102,3 +106,8 @@ end;
 $$;
 
 revoke all on function public.assign_genesis_crew() from anon, authenticated;
+`
+
+writeFileSync(OUT, sql)
+console.log(`wrote ${crew.length} genesis rows -> ${OUT.split('/').pop()}`)
+console.log(`serials: ${crew.map((x) => x.id).join(', ')}`)

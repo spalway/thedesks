@@ -72,30 +72,113 @@ function rarityStrip(x, y, w, h) {
     .join('')
 }
 
+/**
+ * An xployee at a desk, drawn in 2.5D from a raised angle.
+ *
+ * Pixel art built from rects rather than paths, at a fixed unit size, so edges
+ * stay hard at any export scale — the same reason the site renders its avatars
+ * on a canvas with image-rendering: pixelated.
+ *
+ * The projection is a simple oblique: every "depth" step moves right by DX and
+ * up by DY. Not a true isometric (which would also foreshorten width), because
+ * an oblique keeps every face on the pixel grid and a rotated one does not,
+ * which is what stops the whole thing looking like a resized JPEG.
+ */
+function scene(canvasW, canvasH, margin) {
+  // Collected in UNIT space and centred afterwards from measured bounds. Placing
+  // it by hand meant recomputing an offset every time a rect moved, and the first
+  // attempt cropped the desk legs off the bottom for exactly that reason.
+  const cells = []
+  const r = (x, y, w, h, fill) => cells.push({ x, y, w, h, fill })
+
+  // Palette. Desk in warm neutrals, monitor near-black, one green for the money
+  // — the same restraint the site uses: colour only where it means something.
+  const DESK = '#c8b48f'
+  const DESK_TOP = '#ddc9a4'
+  const DESK_DARK = '#a08d6b'
+  const SKIN = '#f0c9a0'
+  const SKIN_DK = '#d3a77e'
+  const HAIR = '#3b2a1e'
+  const SHIRT = '#2b2f3d'
+  const SHIRT_DK = '#1a1d27'
+  const SCREEN = '#15131b'
+  const SCREEN_LIT = '#1d2b24'
+  const GREEN = '#3ddc84'
+  const CHAIR = '#4a4a52'
+
+  // ---- desk: top face, then the two visible sides ------------------------
+  for (let i = 0; i < 9; i++) r(10 - i, 22 + i, 30, 1, i === 0 ? DESK_TOP : DESK)
+  r(1, 31, 30, 2, DESK_DARK) // front edge
+  r(1, 33, 2, 7, DESK_DARK) // left leg
+  r(29, 33, 2, 7, DESK_DARK) // right leg
+
+  // ---- monitor, angled back and to the right -----------------------------
+  r(19, 8, 13, 9, SCREEN)
+  r(20, 9, 11, 7, SCREEN_LIT)
+  // A rising chart on the screen — the only motion the still image can imply.
+  const bars = [2, 3, 2, 4, 5, 4, 6]
+  bars.forEach((h, i) => r(21 + i, 15 - h + 1, 1, h, GREEN))
+  r(24, 17, 3, 2, SCREEN) // stand
+  r(23, 19, 5, 1, SCREEN) // foot
+
+  // ---- the xployee, seen from behind and slightly above -------------------
+  r(9, 17, 6, 5, HAIR) // hair
+  r(10, 20, 4, 3, SKIN) // neck and jaw
+  r(9, 22, 6, 1, SKIN_DK) // collar shadow
+  r(8, 23, 8, 6, SHIRT) // torso
+  r(8, 23, 8, 1, SHIRT_DK) // shoulder line
+  r(7, 25, 1, 4, SHIRT_DK) // left arm
+  r(16, 25, 1, 4, SHIRT_DK) // right arm
+  r(16, 28, 2, 1, SKIN) // right hand, on the desk
+  r(6, 28, 2, 1, SKIN) // left hand
+
+  // ---- chair back --------------------------------------------------------
+  r(7, 29, 10, 1, CHAIR)
+  r(7, 30, 1, 4, CHAIR)
+  r(16, 30, 1, 4, CHAIR)
+
+  // ---- money on the desk -------------------------------------------------
+  // Three notes stacked, and coins. Kept small: the joke is that the work is
+  // boring and the output is not.
+  for (let i = 0; i < 3; i++) {
+    r(2 + i * 0.4, 26 - i * 0.6, 5, 2, i === 2 ? '#5fe89b' : GREEN)
+    r(4 + i * 0.4, 26.5 - i * 0.6, 1, 1, '#0f7a44')
+  }
+  r(23, 23, 2, 2, '#e8c96a')
+  r(25, 24, 2, 2, '#d8b34a')
+  r(21, 25, 2, 2, '#e8c96a')
+
+  // Measured bounds, then the largest whole-pixel unit that still fits inside
+  // the margin. Whole units matter: a fractional one puts rect edges on
+  // half-pixels and the hard pixel-art edges turn soft.
+  const minX = Math.min(...cells.map((c) => c.x))
+  const maxX = Math.max(...cells.map((c) => c.x + c.w))
+  const minY = Math.min(...cells.map((c) => c.y))
+  const maxY = Math.max(...cells.map((c) => c.y + c.h))
+  const wUnits = maxX - minX
+  const hUnits = maxY - minY
+
+  const u = Math.floor(
+    Math.min((canvasW - margin * 2) / wUnits, (canvasH - margin * 2) / hUnits),
+  )
+  const ox = Math.round((canvasW - wUnits * u) / 2 - minX * u)
+  const oy = Math.round((canvasH - hUnits * u) / 2 - minY * u)
+
+  return cells
+    .map(
+      (c) =>
+        `<rect x="${ox + c.x * u}" y="${oy + c.y * u}" width="${c.w * u}" height="${c.h * u}" fill="${c.fill}"/>`,
+    )
+    .join('\n  ')
+}
+
 function banner() {
+  // Nothing but the scene on white, per the brief. No wordmark, no tape, no
+  // tagline — an X header is cropped hard on mobile and a single subject
+  // survives that where a composition does not.
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="500" viewBox="0 0 1500 500">
   <rect width="1500" height="500" fill="${PAPER}"/>
-
-  <!-- The wordmark sits well right of centre-left: X overlays the avatar at the
-       bottom-left of a header, and anything under roughly x=300 is covered. -->
-  ${wordmark(300, 248, 100)}
-
-  <text x="304" y="304" font-family="Segoe UI, Arial, sans-serif" font-size="27"
-        font-weight="700" letter-spacing="2.4" fill="${INK}">POWERED BY XSTOCKS</text>
-
-  <text x="304" y="346" font-family="Segoe UI, Arial, sans-serif" font-size="23" fill="${MUTE}">
-    You don't buy a token. You hire an employee.
-  </text>
-
-  <!-- Vertical rule then the tape, echoing the header divider on the site. -->
-  <rect x="1010" y="150" width="2" height="200" fill="${INK}" opacity="0.18"/>
-
-  ${tape(1070, 178, 'NVDAx', '205.76', 1.84)}
-  ${tape(1070, 226, 'AAPLx', '302.61', 0.42)}
-  ${tape(1070, 274, 'MSFTx', '481.07', -0.63)}
-  ${tape(1070, 322, 'SPYx', '771.84', 0.16)}
-
-  ${rarityStrip(0, 488, 1500, 12)}
+  ${scene(1500, 500, 48)}
 </svg>`
 }
 

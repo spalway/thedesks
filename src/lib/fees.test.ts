@@ -42,7 +42,7 @@ import {
   saleListings,
   type ContractListing,
 } from './market'
-import { collection } from './collection'
+import { mintOrder } from './collection'
 import {
   EPOCHS_PER_YEAR,
   EPOCH_MS,
@@ -489,9 +489,21 @@ describe('mint economics', () => {
    * alone, at which point the model-based assertion above is the one still
    * guarding the pricing.
    */
-  it('agrees with the collection that was actually generated', () => {
-    const all = collection()
-    const meanFairValueUsd = all.reduce((sum, x) => sum + fairValueXnft(x) * XNFT_USD, 0) / all.length
+  it('agrees with a fair draw from the supply, not with the genesis crew', () => {
+    // Sampled from the reveal order rather than from collection().
+    //
+    // collection() is no longer a fair draw: the genesis crew is 35 units with a
+    // hand-set rarity mix (2/3/10/20) so the landing page shows every tier, which
+    // makes it far richer than the supply. Measuring mint EV against it compared
+    // the mint price to a deliberately unrepresentative sample and failed by 3.8%
+    // — correctly, because the sample was wrong, not the price.
+    //
+    // What a minter actually draws from is the permutation, so that is what the
+    // price has to be fair against.
+    const SAMPLE = 1_000
+    const drawn = mintOrder().slice(0, SAMPLE).map((id) => buildXployee(id, 0))
+    const meanFairValueUsd =
+      drawn.reduce((sum, x) => sum + fairValueXnft(x) * XNFT_USD, 0) / drawn.length
     expect(Math.abs(mintCostUsd() / meanFairValueUsd - 1)).toBeLessThanOrEqual(TOLERANCE)
   })
 

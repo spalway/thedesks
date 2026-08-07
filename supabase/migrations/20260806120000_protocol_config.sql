@@ -33,7 +33,7 @@ create table if not exists public.protocol_config (
 
   pump_fun_url text not null default '',
   dexscreener_url text not null default '',
-  support_handle text not null default '',
+  support_handle text not null default 'xnfts_network',
 
   -- Lets an operator take the mint offline without clearing the address, which
   -- would otherwise be the only way to stop it and would lose the value.

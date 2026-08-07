@@ -32,7 +32,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { MAX_SUPPLY, buildXployee, UNIFORMS, HEADS, FACES, ACCESSORIES } from '../src/lib/xployee'
-import { mintOrder, HIRED_COUNT, collection } from '../src/lib/collection'
+import { mintOrder, HIRED_COUNT, collection, serialForMint } from '../src/lib/collection'
 import { tierForId } from '../src/lib/tiers'
 import { networkWallets } from '../src/lib/network'
 
@@ -180,12 +180,16 @@ describe('the reveal permutation in 20260806090200', () => {
     expect(serials.slice(0, 20)).not.toEqual(Array.from({ length: 20 }, (_, i) => i))
   })
 
-  it('deals serial 4228 at draw position 512, the first real mint', () => {
-    // Position 512 is the first one past the genesis crew, so this is the serial
-    // the very first buyer receives. The migration asserts the same number in
-    // SQL; asserting it here as well means a regenerated seed cannot move it
-    // without one of the two failing loudly.
-    expect(serials[HIRED_COUNT]).toBe(4228)
+  it('never deals a serial the genesis crew already holds', () => {
+    // This used to assert a fixed serial at position 512. That worked while the
+    // crew was a PREFIX of the permutation; it is now filtered by tier, so the
+    // taken serials are scattered through the order and "position N" no longer
+    // identifies the first free one. What still has to hold is the property that
+    // assertion was protecting: no buyer is issued a serial already on display.
+    const taken = new Set(collection().map((x) => x.id))
+    for (let position = 0; position < 50; position++) {
+      expect(taken.has(serialForMint(position))).toBe(false)
+    }
   })
 })
 
@@ -320,71 +324,58 @@ describe('the 7,900 skill rows in 20260806090400', () => {
   })
 })
 
-describe('the xNET and the genesis crew in 20260806090500', () => {
+describe('the genesis crew in 20260806090500', () => {
   const sql = migration('20260806090500_seed_xnet_genesis.sql')
-  const walletRows = tuples(valuesBlock(sql, 'insert into public.wallets', 'on conflict'))
-  const genesisRows = tuples(valuesBlock(sql, 'insert into genesis_crew'))
+  const genesisRows = tuples(valuesBlock(sql, 'insert into public.genesis_crew', 'on conflict'))
 
-  const wallets = networkWallets(Date.UTC(2026, 7, 5))
-
-  it('seeds all 97 xNET wallets', () => {
-    expect(walletRows).toHaveLength(97)
-    expect(wallets).toHaveLength(97)
-    expect(new Set(walletRows.map((r) => r[0]))).toEqual(new Set(wallets.map((w) => w.address)))
-  })
-
-  it('gives every wallet the handle network.ts generates for it', () => {
-    const byAddress = new Map(wallets.map((w) => [w.address, w.handle]))
-    for (const row of walletRows) expect(row[1]).toBe(byAddress.get(row[0]))
-  })
-
-  it('covers exactly the 512 pre-hired workers', () => {
+  it('seeds exactly the genesis crew, not a simulated network', () => {
+    // Was 512 xployees across 97 invented wallets. Those wallets did not exist,
+    // and seeding them made a first-day protocol look like it had a history.
     expect(genesisRows).toHaveLength(HIRED_COUNT)
-    expect(genesisRows.map((r) => Number(r[0]))).toEqual(
-      Array.from({ length: HIRED_COUNT }, (_, i) => i),
-    )
+    expect(HIRED_COUNT).toBe(35)
   })
 
-  it('matches the collection position for position, serial and hire time', () => {
+  it('names the same serials collection() renders', () => {
+    const crew = collection().map((x) => x.id)
+    expect(genesisRows.map((r) => Number(r[0]))).toEqual(crew)
+  })
+
+  it('carries the rarity mix the landing page is meant to show', () => {
     const crew = collection()
+    const counts: Record<string, number> = {}
+    for (const x of crew) counts[x.tier.id] = (counts[x.tier.id] ?? 0) + 1
+    expect(counts).toEqual({ xrated: 2, expert: 3, mid: 10, entry: 20 })
+  })
+
+  it('agrees with the collection on hire time, to the millisecond', () => {
+    const byId = new Map(collection().map((x) => [x.id, x]))
     for (const row of genesisRows) {
-      const pos = Number(row[0])
-      expect(Number(row[1])).toBe(crew[pos].id)
-      // Hire times are seeded on mint POSITION, not on the clock, so they are
-      // stable across machines — which is what lets a book value computed in
-      // Postgres agree with one computed in the browser.
-      //
-      // Compared to the millisecond rather than exactly. `hireTimeFor` multiplies
-      // an epoch count by a jitter and lands on a FRACTIONAL millisecond, which
-      // `toISOString()` truncates on the way into the migration. That truncation
-      // is correct — a sub-millisecond hire time is float noise, and accrual over
-      // it is worth about 10^-13 of a cent — but it means equality is the wrong
-      // assertion and would fail for a right reason.
-      expect(Math.abs(Date.parse(row[3]) - crew[pos].hiredAt)).toBeLessThan(1)
+      const x = byId.get(Number(row[0]))
+      expect(x).toBeDefined()
+      expect(Math.abs(Number(row[2]) - x!.hiredAt)).toBeLessThan(1)
     }
   })
 
-  it('gives every genesis worker the owner the xNET partition assigns', () => {
-    const ownerOf = new Map<number, string>()
-    for (const w of wallets) for (const id of w.xployeeIds) ownerOf.set(id, w.address)
-    expect(ownerOf.size).toBe(HIRED_COUNT)
-
-    for (const row of genesisRows) {
-      expect(row[2]).toBe(ownerOf.get(Number(row[1])))
-    }
+  it('leaves ownership unassigned rather than baking in an address', () => {
+    // The project wallet lives in protocol_config and is set after deploy, so a
+    // literal here would be whatever was current when this was generated. An
+    // obviously-unset owner is the honest state; assign_genesis_crew() resolves
+    // it from config.
+    for (const row of genesisRows) expect(row[1]).toBe('GENESIS-UNASSIGNED')
+    expect(sql).toContain('create or replace function public.assign_genesis_crew')
+    expect(sql).toContain('select dev_wallet into target')
   })
 
-  it('owns each xployee exactly once across the whole network', () => {
-    const owners = genesisRows.map((r) => Number(r[1]))
-    expect(new Set(owners).size).toBe(HIRED_COUNT)
+  it('owns each serial exactly once', () => {
+    const serialsSeeded = genesisRows.map((r) => Number(r[0]))
+    expect(new Set(serialsSeeded).size).toBe(HIRED_COUNT)
   })
 })
 
 describe('what the seed leaves for the mint', () => {
   it('reserves only the genesis positions, so the pool is the rest of the supply', () => {
-    // 5000 - 512. Stated here as well as in the migration's own assertion,
-    // because it is the number a mint page renders as "remaining".
-    expect(MAX_SUPPLY - HIRED_COUNT).toBe(4488)
+    // 5000 - 35, and it is the number the mint page renders as "remaining".
+    expect(MAX_SUPPLY - HIRED_COUNT).toBe(4965)
   })
 
   it('leaves every rare serial that is not already hired available to mint', () => {

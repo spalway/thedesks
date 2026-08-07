@@ -3,9 +3,27 @@
 import { buildXployee, MAX_SUPPLY, type Xployee } from './xployee'
 import { EPOCH_MS, GENESIS, epochAt } from './accrual'
 import { rngFrom } from './rng'
-import { TIERS, type TierId } from './tiers'
+import { TIERS, tierForId, type TierId } from './tiers'
 
-export const HIRED_COUNT = 512
+/**
+ * The genesis crew — what exists on the site before anyone mints.
+ *
+ * This was 512 xployees spread over 97 invented wallets, which was the right
+ * shape for a demo and the wrong one for a launch: a brand-new protocol showing
+ * a bustling secondary market is claiming a history it does not have.
+ *
+ * It is now one crew, held by the project wallet, sized so the landing page has
+ * something to show and every rarity is represented. Real holders appear as they
+ * mint.
+ */
+export const GENESIS_CREW: { tier: TierId; count: number }[] = [
+  { tier: 'xrated', count: 2 },
+  { tier: 'expert', count: 3 },
+  { tier: 'mid', count: 10 },
+  { tier: 'entry', count: 20 },
+]
+
+export const HIRED_COUNT = GENESIS_CREW.reduce((n, g) => n + g.count, 0)
 
 /**
  * Hire times are spread deterministically from genesis to "now-ish". Using a
@@ -52,21 +70,74 @@ export function mintOrder(): readonly number[] {
   return order
 }
 
-/** The serial the Nth mint receives. */
+/**
+ * The serial the Nth mint receives, skipping anything the genesis crew holds.
+ *
+ * Without the skip the first minter would be issued a serial the project wallet
+ * is already displaying, because the crew is drawn from this same permutation
+ * but filtered by tier rather than taken off the front.
+ */
 export function serialForMint(position: number): number {
   const o = mintOrder()
+  const taken = takenSerials()
+  let seen = -1
+  for (let i = 0; i < o.length; i++) {
+    if (taken.has(o[i])) continue
+    seen++
+    if (seen === position) return o[i]
+  }
+  // Every serial is spoken for. Wrap rather than return undefined; a collection
+  // this size will not reach it, and a wrong number beats a crash.
   return o[((position % MAX_SUPPLY) + MAX_SUPPLY) % MAX_SUPPLY]
 }
 
 let cache: Xployee[] | null = null
 
-/** The hired collection, in reveal order. Built once per session. */
+/**
+ * The genesis crew, in reveal order.
+ *
+ * NOT simply the first HIRED_COUNT of the reveal order. That permutation is
+ * uniform over the whole supply, so taking 35 from the front would follow the
+ * natural distribution — about 1 X-RATED and 21 uncommons — and the landing page
+ * would frequently show no X-RATED at all. GENESIS_CREW fixes the shape instead,
+ * so every rarity is visible on a cold visit.
+ *
+ * Serials still come off the reveal permutation, in order, so these are drawn
+ * from the same sequence a real mint draws from rather than being hand-picked.
+ * Rarity is positional, so filtering by tier is just filtering by serial band.
+ */
 export function collection(): Xployee[] {
   if (cache) return cache
-  cache = mintOrder()
-    .slice(0, HIRED_COUNT)
-    .map((id, position) => buildXployee(id, hireTimeFor(position)))
+
+  const want = new Map<TierId, number>(GENESIS_CREW.map((g) => [g.tier, g.count]))
+  const picked: number[] = []
+
+  for (const serial of mintOrder()) {
+    const tier = tierForId(serial, MAX_SUPPLY).id
+    const left = want.get(tier) ?? 0
+    if (left <= 0) continue
+    want.set(tier, left - 1)
+    picked.push(serial)
+    if (picked.length === HIRED_COUNT) break
+  }
+
+  cache = picked.map((id, position) => buildXployee(id, hireTimeFor(position)))
   return cache
+}
+
+/**
+ * Serials the genesis crew already holds.
+ *
+ * `serialForMint` walks the reveal order from a position, and the genesis crew
+ * was drawn out of that same order — but NOT from its front, since it was
+ * filtered by tier. So the next mint has to skip anything already taken, or the
+ * first real minter is handed a serial the project wallet is already showing.
+ */
+let takenCache: Set<number> | null = null
+
+export function takenSerials(): ReadonlySet<number> {
+  if (!takenCache) takenCache = new Set(collection().map((x) => x.id))
+  return takenCache
 }
 
 // Serials are no longer contiguous, so array indexing would silently return the

@@ -1,16 +1,16 @@
-// The xNET — a simulated ownership graph laid over the hired collection.
+// The xNET — who owns what.
 //
-// Every one of the 512 xployees has to belong to someone. This file partitions
-// them across 97 deterministic wallets with a realistic long tail: four whales,
-// a broad middle, and a crowd holding one to three.
+// At launch this is one wallet: the project wallet, holding the genesis crew.
+// It used to invent 97 holders with generated handles and `fakeAddress`
+// addresses, which suited a demo and would misrepresent a launch — none of those
+// addresses existed, and a first-day protocol showing a hundred holders is
+// claiming a history it does not have.
 //
-// The partition is built by slicing a seeded permutation of the collection's
-// ids, so "every xployee owned exactly once" holds by construction rather than
-// by convention — there is no code path that can drop or duplicate an id.
+// Real wallets appear here as people mint. The valuation and xBoss machinery
+// below is unchanged and applies to whoever shows up.
 import { bookValue, yieldPerEpoch } from './accrual'
-import { HIRED_COUNT, collection, byId } from './collection'
-import { SKILLS } from './skills'
-import { fakeAddress, pick, randInt, rngFrom, type Rng } from './rng'
+import { collection, byId } from './collection'
+import { devWalletAddress } from './spl'
 import { tierRank, type TierId } from './tiers'
 
 /** Status ladder, ascending. Derived from portfolio value, not headcount. */
@@ -88,117 +88,6 @@ export function nextRank(portfolioValue: number): { rank: XBoss; remaining: numb
   return { rank: next, remaining: Math.max(0, step.minValue - portfolioValue) }
 }
 
-// ---------------------------------------------------------------------------
-// Handles
-// ---------------------------------------------------------------------------
-
-// Back-office flavour on one side, crypto-native on the other. Crossing the two
-// lists is what makes the network read as xNFTs rather than generic degens.
-const STEMS = [
-  'desk', 'ledger', 'vault', 'tape', 'margin', 'yield', 'basis', 'delta',
-  'wick', 'candle', 'block', 'mint', 'carry', 'spread', 'tick', 'fill',
-  'print', 'flow', 'book', 'wire', 'payroll', 'shift', 'badge', 'cubicle',
-  'swivel', 'stapler', 'memo', 'quota', 'audit', 'coupon', 'float', 'pivot',
-  'clerk', 'temp', 'nightshift', 'backoffice', 'lanyard', 'timesheet',
-  'overtime', 'severance',
-] as const
-
-const TAGS = [
-  'runner', 'pusher', 'holder', 'maxi', 'ape', 'whale', 'chad', 'sniper',
-  'goblin', 'hands', 'printer', 'stacker', 'farmer', 'degen', 'dealer',
-  'keeper', 'watcher', 'jockey', 'bot', 'lord', 'anon', 'wagie', 'bull',
-  'bear', 'fund', 'capital', 'grinder', 'sweeper', 'flipper', 'baglord',
-] as const
-
-// The desks the collection actually works, so handles reference real tickers.
-const TICKERS = SKILLS.map((s) => s.ticker.replace(/x$/, '').toLowerCase())
-
-function rollHandle(rng: Rng): string {
-  switch (randInt(rng, 0, 3)) {
-    case 0:
-      return `${pick(rng, STEMS)}${pick(rng, TAGS)}`
-    case 1:
-      return `${pick(rng, TICKERS)}_${pick(rng, TAGS)}`
-    case 2:
-      return `${pick(rng, TAGS)}_${pick(rng, STEMS)}`
-    default:
-      return `${pick(rng, STEMS)}${pick(rng, TAGS)}${randInt(rng, 2, 99)}`
-  }
-}
-
-function uniqueHandle(rng: Rng, taken: Set<string>): string {
-  for (let attempt = 0; attempt < 24; attempt++) {
-    const handle = rollHandle(rng)
-    if (!taken.has(handle)) {
-      taken.add(handle)
-      return handle
-    }
-  }
-  // Never stall on an unlucky seed: suffix until free. Still deterministic,
-  // because the roll order that got us here is.
-  const base = rollHandle(rng)
-  let n = 2
-  while (taken.has(`${base}${n}`)) n++
-  taken.add(`${base}${n}`)
-  return `${base}${n}`
-}
-
-// ---------------------------------------------------------------------------
-// Partition
-// ---------------------------------------------------------------------------
-
-/** Wallets holding 20–40. Few enough that the leaderboard has a real top. */
-const WHALES = 4
-/**
- * Wallets holding 9–16 — small funds. This band exists to keep the value curve
- * continuous: jumping straight from 8-xployee wallets to 20-xployee whales left
- * a hole between ~$16K and ~$46K, and any threshold landing in that hole would
- * have carved the network at a cliff instead of across a population.
- */
-const DESKS = 16
-/**
- * Supply reserved for the one-to-three-xployee crowd. A quarter of 512 at 1–3
- * each yields 67 small wallets — two thirds of the network, which is what makes
- * the tail look lived-in rather than decorative.
- */
-const TAIL_SUPPLY = Math.round(HIRED_COUNT * 0.25)
-
-/**
- * Holding counts that sum to exactly HIRED_COUNT.
- *
- * Every push clamps against what is left, so the total can never overshoot, and
- * the 1–3 tail loop guarantees it reaches zero.
- */
-function walletSizes(rng: Rng): number[] {
-  const sizes: number[] = []
-  let remaining = HIRED_COUNT
-
-  const take = (want: number) => {
-    const size = Math.min(want, remaining)
-    if (size <= 0) return
-    sizes.push(size)
-    remaining -= size
-  }
-
-  for (let i = 0; i < WHALES; i++) take(randInt(rng, 20, 40))
-  for (let i = 0; i < DESKS; i++) take(randInt(rng, 9, 16))
-  while (remaining > TAIL_SUPPLY) take(randInt(rng, 3, 8))
-  while (remaining > 0) take(randInt(rng, 1, 3))
-
-  return sizes
-}
-
-/** Fisher-Yates over the collection's real ids. */
-function shuffledIds(rng: Rng): number[] {
-  const ids = collection().map((x) => x.id)
-  for (let i = ids.length - 1; i > 0; i--) {
-    const j = randInt(rng, 0, i)
-    const tmp = ids[i]
-    ids[i] = ids[j]
-    ids[j] = tmp
-  }
-  return ids
-}
 
 /** The time-invariant half of a wallet: who it is and what it owns. */
 interface WalletSkeleton {
@@ -207,37 +96,32 @@ interface WalletSkeleton {
   xployeeIds: number[]
 }
 
-let skeletonCache: WalletSkeleton[] | null = null
-
+/**
+ * The network at launch: one wallet, holding the whole genesis crew.
+ *
+ * This used to partition 512 xployees across 97 invented wallets with invented
+ * handles. That was right for a demo and wrong for a launch — a protocol on its
+ * first day showing a hundred holders and a busy secondary market is inventing a
+ * history it does not have, and every one of those addresses was a `fakeAddress`
+ * nobody could look up.
+ *
+ * So xNET starts honest: the project wallet, the crew it holds, and nothing
+ * else. It fills up as people actually mint.
+ *
+ * Not cached across config changes, unlike the old version — the address comes
+ * from runtime config, and an operator who corrects the project wallet in
+ * Supabase must see xNET follow rather than keep showing the old one.
+ */
 function skeletons(): WalletSkeleton[] {
-  if (skeletonCache) return skeletonCache
+  const ids = collection()
+    .map((x) => x.id)
+    .sort((a, b) => a - b)
 
-  const rng = rngFrom('xnet', 'wallets', 'v1')
-  const ids = shuffledIds(rng)
-  const sizes = walletSizes(rng)
-  const taken = new Set<string>()
-  const out: WalletSkeleton[] = []
+  // Before the project wallet is configured there is no honest address to show.
+  // A placeholder is better than a fake one that looks real enough to search for.
+  const address = devWalletAddress() || 'PROJECT-WALLET-NOT-CONFIGURED'
 
-  let cursor = 0
-  for (let i = 0; i < sizes.length; i++) {
-    // Disjoint slices of a permutation — this is the invariant, not a check.
-    const owned = ids.slice(cursor, cursor + sizes[i]).sort((a, b) => a - b)
-    cursor += sizes[i]
-    out.push({
-      address: fakeAddress(`xnet:wallet:${i}`),
-      handle: uniqueHandle(rng, taken),
-      xployeeIds: owned,
-    })
-  }
-
-  // Belt and braces: fail loudly at boot rather than orphan an xployee quietly
-  // if someone later edits walletSizes into something that under-allocates.
-  if (cursor !== HIRED_COUNT) {
-    throw new Error(`xnet: partitioned ${cursor} xployees, expected ${HIRED_COUNT}`)
-  }
-
-  skeletonCache = out
-  return out
+  return [{ address, handle: 'xNFTs', xployeeIds: ids }]
 }
 
 // ---------------------------------------------------------------------------

@@ -49,8 +49,23 @@ export function isTokenLaunched(): boolean {
 }
 
 /** The handle without its `@`, or null when unset. Never returns a bare `@`. */
+/**
+ * The project's X handle.
+ *
+ * Falls back to a built-in default, which the money constants deliberately do
+ * NOT do. The difference is what a wrong value costs: a wrong mint address sends
+ * real tokens somewhere unrecoverable, so it must refuse rather than guess. A
+ * handle is branding — the worst case is a link to the wrong profile, and the
+ * cost of NOT having one is that a fresh deploy is missing its X button until
+ * somebody remembers to fill in a database row.
+ *
+ * Supabase still wins whenever it has a value.
+ */
+const DEFAULT_HANDLE = 'xnfts_network'
+
 export function twitterHandle(): string | null {
-  const handle = supportHandle().trim().replace(/^@+/, '')
+  const configured = supportHandle().trim().replace(/^@+/, '')
+  const handle = configured.length > 0 ? configured : DEFAULT_HANDLE
   return handle.length > 0 ? handle : null
 }
 
