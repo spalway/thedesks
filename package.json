@@ -14,7 +14,8 @@
     "deploy": "npm run build && wrangler deploy",
     "deploy:preview": "npm run build && wrangler versions upload",
     "brand": "node scripts/brand.mjs",
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "sql:split": "node scripts/split-sql.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
