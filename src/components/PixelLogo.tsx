@@ -4,9 +4,9 @@ import { buildLogo, LOGO_GRID } from '../lib/logos'
 /**
  * A ticker's pixel mark.
  *
- * These are monograms, not corporate logos — reproducing real brand marks would
- * be trademark use, and we have no licence to any of them. If real art is ever
- * supplied, only this component and logos.ts need to change.
+ * Authored at 16px and painted 1:1, then scaled by whole integers only — these
+ * are hand-placed pixels, and a fractional scale resamples them into mush. See
+ * logos.ts for the marks themselves.
  */
 export function PixelLogo({
   symbol,

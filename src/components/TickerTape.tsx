@@ -49,7 +49,7 @@ function usePrefersReducedMotion(): boolean {
   return reduced
 }
 
-/** The pixel monogram, painted 1:1 — the tile is authored at its display size. */
+/** The pixel mark, painted 1:1 — the tile is authored at its display size. */
 function LogoTile({ symbol, name }: { symbol: string; name: string }) {
   const ref = useRef<HTMLCanvasElement>(null)
 
