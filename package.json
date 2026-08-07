@@ -48,5 +48,14 @@
   },
   "allowScripts": {
     "esbuild@0.25.12": true
+  },
+  "optionalDependencies": {
+    "@tailwindcss/oxide-linux-x64-gnu": "4.3.3",
+    "@tailwindcss/oxide-linux-x64-musl": "4.3.3",
+    "lightningcss-linux-x64-gnu": "1.32.0",
+    "lightningcss-linux-x64-musl": "1.32.0",
+    "@rollup/rollup-linux-x64-gnu": "4.62.4",
+    "@rollup/rollup-linux-x64-musl": "4.62.4",
+    "@esbuild/linux-x64": "0.25.12"
   }
 }
