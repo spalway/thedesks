@@ -202,48 +202,6 @@ function avatar() {
 </svg>`
 }
 
-/**
- * The favicon: a white pixel X on ink.
- *
- * Drawn as rects on an explicit grid rather than set in m42, because an SVG
- * favicon is rendered in an isolated context that does not load @font-face —
- * the glyph would silently fall back to a system face and stop being pixel art.
- *
- * Black ground, not white. A white X needs something to sit on, and ink is the
- * brand's other half; on white it would be an empty square in the tab.
- *
- * GRID is odd so the two diagonals cross on a single centre cell instead of
- * meeting in a 2x2 blur, which is what keeps the join sharp at 16px.
- */
-function faviconSvg(size) {
-  const GRID = 11
-  const cell = size / GRID
-  const px = []
-
-  // Membership by distance from each diagonal, rather than by plotting offset
-  // cells. The offset version had to clamp at the edges, and clamping collapsed
-  // two cells into one — so the bottom row came out one pixel thinner than the
-  // top and the X sat visibly crooked. A predicate has no edges to special-case.
-  //
-  // <= 1 gives arms two cells wide. One is too fine to survive a 16px tab;
-  // three closes the counters and reads as a filled square.
-  const onArm = (x, y) => Math.abs(x - y) <= 1 || Math.abs(x + y - (GRID - 1)) <= 1
-
-  for (let y = 0; y < GRID; y++) {
-    for (let x = 0; x < GRID; x++) {
-      if (!onArm(x, y)) continue
-      px.push(`<rect x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}"/>`)
-    }
-  }
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">
-  <rect width="${size}" height="${size}" fill="${INK}"/>
-  <g fill="${PAPER}">
-    ${px.join('\n    ')}
-  </g>
-</svg>`
-}
-
 function render(svg, width, file) {
   const r = new Resvg(svg, {
     fitTo: { mode: 'width', value: width },
@@ -263,19 +221,6 @@ const a = render(avatar(), 400, join(OUT, 'x-avatar.png'))
 writeFileSync(join(OUT, 'x-banner.svg'), banner())
 writeFileSync(join(OUT, 'x-avatar.svg'), avatar())
 
-// Favicon goes to public/ root, not public/brand/ — index.html references it by
-// a stable path and a tab icon is not a brand deliverable to hand someone.
-const PUBLIC = join(ROOT, 'public')
-const favSvg = faviconSvg(64)
-writeFileSync(join(PUBLIC, 'favicon.svg'), favSvg)
-// PNG fallbacks: Safari ignores SVG favicons, and the 180px one is what iOS
-// uses for a home-screen bookmark.
-const f32 = render(favSvg, 32, join(PUBLIC, 'favicon-32.png'))
-const f180 = render(favSvg, 180, join(PUBLIC, 'apple-touch-icon.png'))
-
 console.log(`banner  1500x500  ${(b / 1024).toFixed(1)} kB  -> public/brand/x-banner.png`)
 console.log(`avatar   400x400  ${(a / 1024).toFixed(1)} kB  -> public/brand/x-avatar.png`)
-console.log(`favicon    64/svg  ${(favSvg.length / 1024).toFixed(1)} kB  -> public/favicon.svg`)
-console.log(`favicon    32x32  ${(f32 / 1024).toFixed(1)} kB  -> public/favicon-32.png`)
-console.log(`apple     180x180  ${(f180 / 1024).toFixed(1)} kB  -> public/apple-touch-icon.png`)
 console.log(`sources                             -> public/brand/*.svg`)

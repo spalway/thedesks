@@ -10,7 +10,7 @@
 // below is unchanged and applies to whoever shows up.
 import { bookValue, yieldPerEpoch } from './accrual'
 import { collection, byId } from './collection'
-import { devWalletAddress } from './spl'
+import { getRuntimeConfig } from './runtimeConfig'
 import { tierRank, type TierId } from './tiers'
 
 /** Status ladder, ascending. Derived from portfolio value, not headcount. */
@@ -117,9 +117,12 @@ function skeletons(): WalletSkeleton[] {
     .map((x) => x.id)
     .sort((a, b) => a - b)
 
+  // From runtimeConfig, NOT from lib/spl. spl drags @solana/web3.js behind it and
+  // this module renders on every route, so importing it there put ~280kB of
+  // Solana back into the entry chunk — the same regression twice already.
   // Before the project wallet is configured there is no honest address to show.
   // A placeholder is better than a fake one that looks real enough to search for.
-  const address = devWalletAddress() || 'PROJECT-WALLET-NOT-CONFIGURED'
+  const address = getRuntimeConfig().devWallet || 'PROJECT-WALLET-NOT-CONFIGURED'
 
   return [{ address, handle: 'xNFTs', xployeeIds: ids }]
 }
