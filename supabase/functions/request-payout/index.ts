@@ -166,6 +166,20 @@ Deno.serve(serveSafely(async (request: Request): Promise<Response> => {
   const config = loadConfig()
   if (isFnError(config)) return errorResponse(config)
 
+  // Refused at the door rather than recorded and then never confirmable. This
+  // endpoint writes a pending row that confirm-payout is supposed to settle, and
+  // with one wallet for both there is no sweep to settle — so accepting the post
+  // would queue a row that can only ever sit pending. See the same guard in
+  // confirm-payout for why a claim is unreadable in that shape.
+  if (!config.sweepsFees) {
+    return errorResponse(
+      fnError(
+        'not-configured',
+        'The treasury and the dev wallet are the same address, so fees are never swept and there is no claim to record. Nothing was written.',
+      ),
+    )
+  }
+
   // 'record' remains the only action, and 'build' is refused with a pointer
   // rather than a generic parse error — a client still calling it is a client
   // that has not been updated, and telling it where the builder went is more use

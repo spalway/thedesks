@@ -45,6 +45,7 @@ const config: FunctionConfig = {
   xnftMint: MINT,
   treasury: TREASURY,
   devWallet: DEV,
+  sweepsFees: true,
   supabaseUrl: 'https://example.invalid',
   serviceRoleKey: 'unused',
 }
@@ -372,5 +373,40 @@ describe('reading helpers', () => {
       { from: BUYER, to: OTHER, amount: 2n, mint: 'SomeOtherM1nt111111111111111111111111111111' },
     ])
     expect(transfersOfMint(r, MINT)).toHaveLength(1)
+  })
+})
+
+describe('when one wallet is both the treasury and the dev wallet', () => {
+  // A supported deployment, not a mistake: one wallet collects fees and the same
+  // wallet pays people, so there is no sweep because the money never has
+  // anywhere to go. loadConfig used to refuse it outright.
+  const single: FunctionConfig = { ...config, treasury: DEV, sweepsFees: false }
+
+  it('lets the project wallet mint', () => {
+    // The regression this guards. `burner === config.treasury` rejects a mint as
+    // "the treasury does not mint" — a rule that exists so an operator sweeping
+    // fees is never read as somebody buying. With one wallet doing both jobs
+    // there is no sweep to confuse it with, and enforcing it anyway means the
+    // project wallet can never mint its own xployee.
+    const event = recogniseEvent(single, reading([{ from: DEV, to: INCINERATOR_ADDRESS, amount: BURN }]))
+    expect(event).toMatchObject({ kind: 'mint' })
+  })
+
+  it('still refuses a treasury mint when the two ARE distinct', () => {
+    const event = recogniseEvent(config, reading([{ from: TREASURY, to: INCINERATOR_ADDRESS, amount: BURN }]))
+    expect((event as { message: string }).message).toContain('treasury does not mint')
+  })
+
+  it('does not read a self-transfer as a claim', () => {
+    // With one wallet the claim test degenerates to "did the project wallet send
+    // $xNFT to itself". That is not a payout, and letting it match would also
+    // shadow the mint branch that sits below it.
+    const event = recogniseEvent(single, reading([{ from: DEV, to: DEV, amount: BURN }]))
+    expect((event as { kind?: string }).kind).not.toBe('payout')
+  })
+
+  it('still recognises a real claim when the two ARE distinct', () => {
+    const event = recogniseEvent(config, reading([{ from: TREASURY, to: DEV, amount: BURN }]))
+    expect(event).toMatchObject({ kind: 'payout' })
   })
 })

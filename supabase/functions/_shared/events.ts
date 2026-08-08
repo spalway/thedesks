@@ -126,7 +126,11 @@ export function recogniseEvent(config: FunctionConfig, reading: TransferReading)
   // the "unrecognised" branch instead would return a 422 for a perfectly valid
   // transaction, which a client posting every signature it sends would surface as
   // an error worth showing someone.
+  // `sweepsFees` first: with one wallet for both, this test degenerates into
+  // "did the project wallet send $xNFT to itself", which is not a claim and
+  // must not shadow the mint branch below it.
   if (
+    config.sweepsFees &&
     legs.length === 1 &&
     legs[0].sourceOwner === config.treasury &&
     legs[0].destinationOwner === config.devWallet
@@ -153,7 +157,11 @@ export function recogniseEvent(config: FunctionConfig, reading: TransferReading)
     if (burner === null) {
       return fnError('rejected', 'The burn did not report the owner of the account it came from.')
     }
-    if (burner === config.treasury) {
+    // Only when the two are distinct. The rule exists so an operator sweeping
+    // fees out of the treasury can never be read as somebody buying an xployee;
+    // where one wallet does both jobs there is no sweep to confuse it with, and
+    // enforcing it anyway would mean the project wallet could never mint.
+    if (config.sweepsFees && burner === config.treasury) {
       return fnError('rejected', 'The treasury does not mint. Nothing was indexed.')
     }
 
@@ -193,7 +201,9 @@ export function recogniseEvent(config: FunctionConfig, reading: TransferReading)
   if (payer === null || second.sourceOwner !== payer) {
     return fnError('rejected', 'The two $xNFT transfers came from different payers, so they are not one event.')
   }
-  if (payer === config.treasury) {
+  // Same reasoning as the mint branch: only meaningful where the treasury is a
+  // wallet distinct from the one a person actually spends from.
+  if (config.sweepsFees && payer === config.treasury) {
     return fnError('rejected', 'The treasury does not mint or rent. Nothing was indexed.')
   }
 

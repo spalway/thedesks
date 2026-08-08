@@ -242,6 +242,25 @@ Deno.serve(serveSafely(async (request: Request): Promise<Response> => {
   const config = loadConfig()
   if (isFnError(config)) return errorResponse(config)
 
+  // A claim is a transfer from the treasury to the dev wallet. Where those are
+  // one address there is no transfer to read, and readClaim below cannot ever
+  // return one: it requires `received > 0` and `sent === -received`, and with a
+  // single wallet those are the same number, so only zero satisfies both and
+  // zero is already refused. Left to run, every row would come back 'unreadable'
+  // and be retried on every sweep, forever.
+  //
+  // Refusing here says so once, plainly, instead of burning RPC quota to
+  // rediscover it. Fee revenue in this shape never moves — it is already in the
+  // wallet that pays people.
+  if (!config.sweepsFees) {
+    return errorResponse(
+      fnError(
+        'not-configured',
+        'The treasury and the dev wallet are the same address, so fees are never swept and there is no claim to confirm. Nothing was read.',
+      ),
+    )
+  }
+
   const requested = typeof body.signature === 'string' ? body.signature.trim() : ''
   if (requested && !isValidSignature(requested)) {
     return errorResponse(fnError('bad-request', 'That is not a Solana transaction signature.'))

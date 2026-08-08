@@ -29,6 +29,16 @@ export interface FunctionConfig {
   treasury: string
   /** Where a claim sends fees. Read from here, never from a request body. */
   devWallet: string
+  /**
+   * Whether fees are swept between two wallets at all.
+   *
+   * False when the treasury and the dev wallet are the same address, which is a
+   * supported deployment: one wallet collects and one wallet pays, and there is
+   * no sweep because the money never has anywhere to go. Every path that reads a
+   * "claim" off the chain checks this first, because with one wallet a claim is
+   * not a small transfer — it does not exist.
+   */
+  sweepsFees: boolean
   /** Injected by the platform — the Edge Function's own project. */
   supabaseUrl: string
   /** Injected by the platform. Bypasses RLS; never leaves the server. */
@@ -106,15 +116,26 @@ export function loadConfig(): FunctionConfig | FnError {
   const devWallet = requireAddress('DEV_WALLET_ADDRESS', 'no payout destination can be verified')
   if (typeof devWallet !== 'string') return devWallet
 
-  // Two different wallets. If they were the same address a claim would be a
-  // transfer from the treasury to itself, and confirm-payout would happily verify
-  // a zero-value movement as a settled payout.
-  if (treasury === devWallet) {
-    return fnError('not-configured', 'TREASURY_ADDRESS and DEV_WALLET_ADDRESS must be different wallets.')
-  }
+  // One wallet for both is allowed, and is a shape rather than a mistake.
+  //
+  // This used to be a hard refusal, on the reasoning that "a claim would be a
+  // transfer from the treasury to itself, and confirm-payout would happily
+  // verify a zero-value movement as a settled payout". The second half of that
+  // was already false: readClaim requires `received > 0` and `sent === -received`,
+  // and with one wallet those two readings are the same number, so the only
+  // value satisfying both is zero — which the first guard rejects. The
+  // zero-value settlement it feared could not happen.
+  //
+  // What DOES happen with one wallet is subtler and is why this is a flag rather
+  // than a deletion: a claim becomes unverifiable rather than invalid, so
+  // confirm-payout would mark every row unreadable and retry it forever, and the
+  // "the treasury does not mint" rule in events.ts would stop the project wallet
+  // from ever minting its own xployee. Both are handled where they occur, by
+  // asking this flag.
+  const sweepsFees = treasury !== devWallet
 
   const platform = loadPlatformConfig()
   if (isFnError(platform)) return platform
 
-  return { rpcUrl, xnftMint, treasury, devWallet, ...platform }
+  return { rpcUrl, xnftMint, treasury, devWallet, sweepsFees, ...platform }
 }
