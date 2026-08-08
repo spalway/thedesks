@@ -2,10 +2,12 @@
 // could change WITHOUT a rebuild. These tests pin that property, plus the two
 // ways it could go wrong: config that arms something it should not, and config
 // that gets cached at import time and therefore never changes at all.
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import * as supabase from './supabase'
 import {
   getRuntimeConfig,
   isMintArmed,
+  loadRuntimeConfig,
   subscribeRuntimeConfig,
   __setRuntimeConfigForTests,
   __resetRuntimeConfigForTests,
@@ -116,5 +118,40 @@ describe('disarming — every way a mint must refuse', () => {
   it('refuses on a mint that parses but a wallet that does not', () => {
     __setRuntimeConfigForTests({ ...armed, devWallet: 'oops' })
     expect(isMintConfigured()).toBe(false)
+  })
+})
+
+describe('a config row that predates a column', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    __resetRuntimeConfigForTests()
+  })
+
+  it('keeps every other value when rpc_url is missing entirely', async () => {
+    // The deploy-order hazard this guards: PostgREST 400s a select that names a
+    // column the table does not have, so a frontend shipped before its migration
+    // would have lost the mint address, the project wallet and the market links
+    // too — not just the RPC. `select=*` is why this is now a blank field
+    // instead of a dead config.
+    vi.spyOn(supabase, 'isSupabaseConfigured').mockReturnValue(true)
+    vi.spyOn(supabase, 'fetchProtocolConfig').mockResolvedValue({
+      xnftMint: MINT,
+      devWallet: WALLET,
+      treasuryWallet: WALLET,
+      rpcUrl: '',
+      pumpFunUrl: '',
+      dexscreenerUrl: '',
+      supportHandle: 'xnfts_network',
+      mintingEnabled: true,
+      updatedAt: 0,
+    })
+
+    await loadRuntimeConfig()
+    const config = getRuntimeConfig()
+    expect(config.source).toBe('supabase')
+    expect(config.xnftMint).toBe(MINT)
+    expect(config.rpcUrl).toBe('')
+    // And the mint is still armed — a missing RPC is not a reason to refuse.
+    expect(isMintArmed()).toBe(true)
   })
 })

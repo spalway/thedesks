@@ -50,6 +50,21 @@ create table if not exists public.protocol_config (
   -- Simulated marketplace fees only. Nothing real touches this yet.
   treasury_wallet text not null default '',
 
+  -- The Solana RPC the BROWSER uses. Empty falls back to the public
+  -- mainnet-beta endpoint, which Solana Labs documents as development-only and
+  -- which throttles hard — fine for a site nobody is using, not fine on the
+  -- confirmation poll of a mint somebody has already signed and paid for.
+  --
+  -- Here rather than in a build-time variable for the same reason the mint
+  -- address is: swapping providers during an outage must not require a redeploy.
+  --
+  -- NOT a secret. It ships to every browser and anyone can read it out of the
+  -- bundle, which is normal for RPC — restrict the key to your domain in the
+  -- provider's dashboard. The Edge Functions read their own SOLANA_RPC_URL
+  -- secret and that one should be a DIFFERENT key, because it is genuinely
+  -- private and is used to build payout transactions.
+  rpc_url text not null default '',
+
   pump_fun_url text not null default '',
   dexscreener_url text not null default '',
   support_handle text not null default 'xnfts_network',
@@ -60,6 +75,11 @@ create table if not exists public.protocol_config (
 
   updated_at timestamptz not null default now()
 );
+
+-- `create table if not exists` above is a no-op on a database that already has
+-- this table, so a column added later would never appear on one. This is what
+-- actually installs rpc_url for anyone who ran an earlier version of this file.
+alter table public.protocol_config add column if not exists rpc_url text not null default '';
 
 insert into public.protocol_config (id) values (1) on conflict (id) do nothing;
 

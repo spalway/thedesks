@@ -159,9 +159,13 @@ export function devWalletAddress(): string {
 export const INCINERATOR_ADDRESS = '1nc1nerator11111111111111111111111111111111'
 
 /**
- * Public RPC is aggressively rate-limited and drops requests under any real
- * traffic. A production deployment wants its own endpoint passed through the
- * `endpoint` argument every read and build accepts.
+ * Last resort, not the intended endpoint.
+ *
+ * Solana Labs documents this one as development-only. It throttles hard, whole
+ * ISPs and regions get 429s from it, and the worst moment to lose a request is
+ * the confirmation poll of a mint somebody has already signed and paid for.
+ *
+ * A deployment sets `rpc_url` in protocol_config and this is never reached.
  */
 export const DEFAULT_RPC = clusterApiUrl('mainnet-beta')
 
@@ -307,11 +311,39 @@ export function isConfigured(): boolean {
 // Connections
 // ---------------------------------------------------------------------------
 
+/**
+ * Which RPC a call actually talks to.
+ *
+ * Order: an explicit argument, then the operator's `rpc_url` from
+ * protocol_config, then the public endpoint. Read at CALL time like every other
+ * config value here, so changing the row in Supabase moves live browsers to the
+ * new provider on their next request without a redeploy.
+ *
+ * A malformed value FALLS BACK rather than refusing, which is the opposite of
+ * how this module treats the mint and the payee — and deliberately so. Those
+ * decide where money goes, so a wrong one has to stop everything. This decides
+ * only how reliably the chain is read; a typo here should degrade the site to a
+ * slow endpoint, not take it off the air. Anything that is not http(s) would
+ * also throw out of the Connection constructor, so validating here is what keeps
+ * one bad character in a text field from breaking every balance read on the
+ * site.
+ */
+export function resolveRpcEndpoint(endpoint?: string): string {
+  const candidate = endpoint ?? cfg().rpcUrl
+  if (!candidate) return DEFAULT_RPC
+  try {
+    const { protocol } = new URL(candidate)
+    return protocol === 'http:' || protocol === 'https:' ? candidate : DEFAULT_RPC
+  } catch {
+    return DEFAULT_RPC
+  }
+}
+
 /** Reused per endpoint so repeated reads share one client rather than opening a new one each call. */
 const connections = new Map<string, Connection>()
 
 export function getConnection(endpoint?: string): Connection {
-  const url = endpoint ?? DEFAULT_RPC
+  const url = resolveRpcEndpoint(endpoint)
   const existing = connections.get(url)
   if (existing) return existing
   const created = new Connection(url, 'confirmed')

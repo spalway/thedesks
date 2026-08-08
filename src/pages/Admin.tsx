@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js'
+import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js'
 import { Panel, Stat, Table, Th, Td, Tr, Empty, Chip, Button } from '../components/ui'
 import { useWallet } from '../lib/wallet'
 import { useAdminGate } from '../lib/useAdmin'
 import { useNow } from '../lib/useNow'
-import { DEFAULT_RPC } from '../lib/spl'
+import { getConnection } from '../lib/spl'
 import { useRuntimeConfig } from '../lib/useRuntimeConfig'
 import { explorerTx } from '../lib/solana'
 import {
@@ -110,7 +110,12 @@ export function Admin() {
 
       let signature: string
       try {
-        const connection = new Connection(DEFAULT_RPC, 'confirmed')
+        // getConnection(), not `new Connection(DEFAULT_RPC)`. This page sends
+        // real SOL, and it was the one call in the app hardcoded to the public
+        // endpoint — so the highest-stakes transaction in the protocol would
+        // have gone on ignoring the operator's own RPC even after rpc_url was
+        // wired up everywhere else.
+        const connection = getConnection()
         const tx = new Transaction().add(
           SystemProgram.transfer({
             fromPubkey: payer,

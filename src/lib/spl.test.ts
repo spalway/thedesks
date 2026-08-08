@@ -35,6 +35,9 @@ import {
 import {
   CONFIRM_ATTEMPTS,
   CONFIRM_DELAY_MS,
+  DEFAULT_RPC,
+  getConnection,
+  resolveRpcEndpoint,
   devWalletAddress,
   INCINERATOR_ADDRESS,
   MAX_MINT_DECIMALS,
@@ -73,6 +76,7 @@ import {
   isBurnError,
   sendBurn,
 } from './solana'
+import { __setRuntimeConfigForTests, __resetRuntimeConfigForTests } from './runtimeConfig'
 
 /* ---- Fixtures ------------------------------------------------------------ */
 
@@ -923,5 +927,65 @@ describe('confirmation', () => {
     )
     expect(result).toBeNull()
     expect(calls.status).toBe(CONFIRM_ATTEMPTS)
+  })
+})
+
+describe('the RPC endpoint', () => {
+  afterEach(() => {
+    __resetRuntimeConfigForTests()
+  })
+
+  it('falls back to the public endpoint when nothing is configured', () => {
+    // Which is what shipped for a while: `VITE_SOLANA_RPC_URL` was documented in
+    // .env.example and DEPLOY.md, nothing read it, and no caller ever passed the
+    // `endpoint` argument — so every read in the browser went to the public
+    // mainnet-beta endpoint no matter what an operator set.
+    expect(resolveRpcEndpoint()).toBe(DEFAULT_RPC)
+  })
+
+  it('uses the operator’s endpoint from protocol_config', () => {
+    __setRuntimeConfigForTests({ rpcUrl: 'https://mainnet.helius-rpc.com/?api-key=abc' })
+    expect(resolveRpcEndpoint()).toBe('https://mainnet.helius-rpc.com/?api-key=abc')
+  })
+
+  it('reads the config at call time, so a swap reaches live browsers', () => {
+    // The whole point of it living in Supabase rather than in the bundle: an
+    // operator changing providers mid-incident must not need a redeploy.
+    __setRuntimeConfigForTests({ rpcUrl: 'https://one.example/rpc' })
+    expect(resolveRpcEndpoint()).toBe('https://one.example/rpc')
+    __setRuntimeConfigForTests({ rpcUrl: 'https://two.example/rpc' })
+    expect(resolveRpcEndpoint()).toBe('https://two.example/rpc')
+  })
+
+  it('lets an explicit argument win over the configured value', () => {
+    __setRuntimeConfigForTests({ rpcUrl: 'https://configured.example/rpc' })
+    expect(resolveRpcEndpoint('https://explicit.example/rpc')).toBe('https://explicit.example/rpc')
+  })
+
+  it('degrades to the public endpoint on a malformed value rather than refusing', () => {
+    // Deliberately the OPPOSITE of how the mint and the payee are treated. Those
+    // decide where money goes and a bad one must stop everything; this decides
+    // only how reliably the chain is read, so one stray character in a text
+    // field must not take every balance read on the site off the air.
+    for (const bad of ['not a url', 'ws://mainnet.example', 'ftp://x.example', 'javascript:alert(1)', '   ']) {
+      expect(`${bad} -> ${resolveRpcEndpoint(bad)}`).toBe(`${bad} -> ${DEFAULT_RPC}`)
+    }
+    __setRuntimeConfigForTests({ rpcUrl: 'not a url' })
+    expect(resolveRpcEndpoint()).toBe(DEFAULT_RPC)
+  })
+
+  it('accepts a plain-http endpoint, for a local validator', () => {
+    expect(resolveRpcEndpoint('http://127.0.0.1:8899')).toBe('http://127.0.0.1:8899')
+  })
+
+  it('opens one client per endpoint and reuses it', () => {
+    __setRuntimeConfigForTests({ rpcUrl: 'https://reuse.example/rpc' })
+    expect(getConnection()).toBe(getConnection())
+    expect(getConnection('https://other.example/rpc')).not.toBe(getConnection())
+  })
+
+  it('points the client at the configured endpoint', () => {
+    __setRuntimeConfigForTests({ rpcUrl: 'https://pointed.example/rpc' })
+    expect(getConnection().rpcEndpoint).toBe('https://pointed.example/rpc')
   })
 })

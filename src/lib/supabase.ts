@@ -1270,6 +1270,8 @@ export interface ProtocolConfigRow {
   xnftMint: string
   devWallet: string
   treasuryWallet: string
+  /** Browser RPC endpoint. Empty means "use the public one". */
+  rpcUrl: string
   pumpFunUrl: string
   dexscreenerUrl: string
   supportHandle: string
@@ -1289,10 +1291,21 @@ export interface ProtocolConfigRow {
  * blank column means blank, which means "not configured", which means refuse.
  */
 export async function fetchProtocolConfig(): Promise<ProtocolConfigRow | null> {
-  const rows = await select(
-    'protocol_config',
-    'select=xnft_mint,dev_wallet,treasury_wallet,pump_fun_url,dexscreener_url,support_handle,minting_enabled,updated_at&id=eq.1&limit=1',
-  )
+  // `*`, and the ONLY place in this file that does not name its columns.
+  //
+  // PostgREST 400s the whole request when a select names a column the table does
+  // not have. With columns named, adding one to this table — `rpc_url` was the
+  // first — meant a frontend deployed before its migration could not read ANY of
+  // its config: no mint address, no project wallet, no market links, minting
+  // disarmed. A purely additive column would have taken the site's entire
+  // configuration down, in an ordering nobody would think to check.
+  //
+  // The usual objection to `*` does not apply here. This is one row of values
+  // that are public by definition, with a read-only anon policy, and the parse
+  // below still names every field it uses — an unknown column is ignored, and a
+  // missing one coerces to '' and reads as "not configured", which is exactly
+  // what it is.
+  const rows = await select('protocol_config', 'select=*&id=eq.1&limit=1')
   if (isSupabaseError(rows)) return null
 
   const row = rows[0] as Record<string, unknown> | undefined
@@ -1302,6 +1315,7 @@ export async function fetchProtocolConfig(): Promise<ProtocolConfigRow | null> {
     xnftMint: text(row.xnft_mint) ?? '',
     devWallet: text(row.dev_wallet) ?? '',
     treasuryWallet: text(row.treasury_wallet) ?? '',
+    rpcUrl: text(row.rpc_url) ?? '',
     pumpFunUrl: text(row.pump_fun_url) ?? '',
     dexscreenerUrl: text(row.dexscreener_url) ?? '',
     supportHandle: text(row.support_handle) ?? '',

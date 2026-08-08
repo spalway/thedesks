@@ -28,6 +28,16 @@ export interface RuntimeConfig {
   devWallet: string
   /** Simulated marketplace fees only. */
   treasuryWallet: string
+  /**
+   * The Solana RPC this browser should use. Empty means fall back to the public
+   * mainnet-beta endpoint.
+   *
+   * Unlike every other address here, an empty or wrong value is an AVAILABILITY
+   * problem rather than a safety one — the endpoint decides how reliably a
+   * transaction is read and confirmed, never where money goes. So this one
+   * degrades instead of refusing: see resolveRpcEndpoint in spl.ts.
+   */
+  rpcUrl: string
   pumpFunUrl: string
   dexscreenerUrl: string
   supportHandle: string
@@ -45,6 +55,7 @@ const EMPTY: RuntimeConfig = {
   xnftMint: '',
   devWallet: '',
   treasuryWallet: '',
+  rpcUrl: '',
   pumpFunUrl: '',
   dexscreenerUrl: '',
   supportHandle: '',
@@ -131,6 +142,7 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
     xnftMint: row.xnftMint,
     devWallet: row.devWallet,
     treasuryWallet: row.treasuryWallet,
+    rpcUrl: row.rpcUrl,
     pumpFunUrl: row.pumpFunUrl,
     dexscreenerUrl: row.dexscreenerUrl,
     supportHandle: row.supportHandle,
