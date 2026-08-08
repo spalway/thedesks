@@ -8,6 +8,7 @@ import {
   Td,
   Tr,
   TierBadge,
+  TierDot,
   Chip,
   Empty,
   Button,
@@ -16,6 +17,7 @@ import {
   SerialTag,
 } from './ui'
 import { XployeeArt } from './XployeeArt'
+import { tierRank, type Tier, type TierId } from '../lib/tiers'
 import { XBossBadge } from './XBossBadge'
 import { bookValue, trailingApy, yieldPerEpoch, accruedTotal } from '../lib/accrual'
 import { xBossFor, nextRank } from '../lib/network'
@@ -215,8 +217,25 @@ function CrewSummary({
   accrued: number
   now: number
 }) {
-  const byTier = new Map<string, number>()
-  for (const x of crew) byTier.set(x.tier.label, (byTier.get(x.tier.label) ?? 0) + 1)
+  /**
+   * Rarity rows, rarest first.
+   *
+   * Keyed on the tier itself, not on its label. The label was a bare string, so
+   * the row could only ever render as plain grey text — an X-RATED in a crew
+   * summary read exactly like an UNCOMMON, in the one panel whose job is to say
+   * what somebody holds. Carrying the Tier through is what lets the row show
+   * the dot and the badge every other surface uses.
+   *
+   * Order came from Map insertion, which is crew order — effectively arbitrary.
+   * A holdings breakdown has an obvious reading order and it is rarest first.
+   */
+  const byTier = new Map<TierId, { tier: Tier; count: number }>()
+  for (const x of crew) {
+    const row = byTier.get(x.tier.id)
+    if (row) row.count++
+    else byTier.set(x.tier.id, { tier: x.tier, count: 1 })
+  }
+  const tierRows = [...byTier.values()].sort((a, b) => tierRank(b.tier.id) - tierRank(a.tier.id))
 
   const deskCount = new Map<string, number>()
   for (const x of crew) for (const h of x.skills) deskCount.set(h.skill.desk, (deskCount.get(h.skill.desk) ?? 0) + 1)
@@ -230,7 +249,10 @@ function CrewSummary({
           <p className="text-[11px] text-ink-faint">No xployees on the books yet.</p>
         ) : (
           <>
-            <div className="mb-3 flex flex-wrap gap-3">
+            {/* items-start so a 54px framed thumbnail and the "+N more" text
+                do not stretch each other; gap-2 because the frames are their
+                own separation now that nothing glows past them. */}
+            <div className="mb-3 flex flex-wrap items-start gap-2">
               {crew.slice(0, 10).map((x) => (
                 <Link key={x.id} to={`/xployee/${x.id}`} title={`${serial(x.id)} — ${x.tier.label}`}>
                   <XployeeArt xployee={x} size={48} animated={false} className="" />
@@ -240,14 +262,17 @@ function CrewSummary({
                 <span className="self-center text-[10px] text-ink-faint">+{crew.length - 10} more</span>
               ) : null}
             </div>
-            <div className="space-y-1 border-t border-rule pt-2 text-[10px]">
-              {[...byTier.entries()].map(([label, n]) => (
-                <div key={label} className="flex justify-between">
-                  <span className="text-ink-faint">{label}</span>
-                  <span className="mono tabular-nums">{n}</span>
+            <div className="space-y-1.5 border-t border-rule pt-2 text-[10px]">
+              {tierRows.map(({ tier, count }) => (
+                <div key={tier.id} className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2">
+                    <TierDot tier={tier} />
+                    <TierBadge tier={tier} />
+                  </span>
+                  <span className="mono tabular-nums">{count}</span>
                 </div>
               ))}
-              <div className="flex justify-between border-t border-rule pt-1">
+              <div className="flex justify-between border-t border-rule pt-1.5">
                 <span className="text-ink-faint">Unclaimed</span>
                 <Money>{usdLive(accrued)}</Money>
               </div>

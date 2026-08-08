@@ -192,28 +192,23 @@
     border-image: linear-gradient(135deg, #ffb3e6 0%, #d211b0 42%, #8b2fd6 68%, #ffc2ea 100%) 1;
   }
 
-  /* Rapid, because the brief asked for it — roughly 4x the pace of the EPIC
-     badge pulse, so an X-RATED reads as agitated next to a calm one.
+  /* No glow. This carried a `frame-laser` animation whose entire content was a
+     pulsing box-shadow halo — up to 20px of blur at 5px spread, breathing on a
+     1.1s cycle.
 
-     Single hue on purpose. The border colour is held at #ff1b1b through the
-     whole cycle and only the glow's intensity and spread move, so this reads as
-     one red laser breathing rather than a colour shift. An earlier version
-     crossfaded the border to orange at 50%, which made it look like fire. */
-  @keyframes frame-laser {
-    0%,
-    100% {
-      border-color: #ff1b1b;
-      box-shadow: 0 0 0 1px rgba(255, 27, 27, 0.35), 0 0 9px 2px rgba(255, 27, 27, 0.4);
-    }
-    50% {
-      border-color: #ff1b1b;
-      box-shadow: 0 0 0 2px rgba(255, 27, 27, 0.6), 0 0 20px 5px rgba(255, 27, 27, 0.9);
-    }
-  }
+     The border colour never moved (it was held at #ff1b1b through the whole
+     keyframe set), so the halo WAS the animation, and removing one removes the
+     other. A box-shadow also paints outside the border box and is not clipped
+     by `overflow: hidden`, which is why it was worst exactly where the art is
+     smallest: at 48px in a crew summary the halo was a third the width of the
+     thumbnail and bled across its neighbours and out of the panel.
 
+     The red stroke is what marks an X-RATED. It reads at every size, and it is
+     the same weight as the other three tiers so a grid of mixed rarities stays
+     on one rhythm. The laser treatment the brief asked for lives on the badge
+     wordmark (.tier-xrated), which is type and can carry it. */
   .frame-xrated {
     border: 3px solid #ff1b1b;
-    animation: frame-laser 1.1s ease-in-out infinite;
   }
 
   /* ---- Rarity cards ----------------------------------------------------
@@ -380,12 +375,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Hold the frame at its bright end rather than freezing mid-pulse. */
-  .frame-xrated {
-    animation: none;
-    border-color: #ff1b1b;
-    box-shadow: 0 0 10px 2px rgba(255, 27, 27, 0.55);
-  }
+  /* .frame-xrated needs nothing here any more — it is a plain stroke with no
+     animation to hold or freeze. */
 
   .tier-epic,
   .tier-xrated {
