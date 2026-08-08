@@ -1,20 +1,21 @@
 // Friends, direct messages and trade offers — the social layer over the xNet.
 //
-// There is no server. The visitor's half of every conversation lives in
-// localStorage under a single key per wallet address; the other half is
-// simulated, because every counterparty is a deterministic wallet from
-// network.ts.
+// There is no server. Everything here is what the visitor themselves did,
+// stored in localStorage under a single key per wallet address.
 //
-// Two rules shape the whole file:
-//   - reads never throw. Corrupt JSON, a hand-edited entry, blocked storage or
-//     an exhausted quota all degrade to an empty inbox on a page that is
-//     otherwise fine.
-//   - seeding is additive and runs exactly once, so starter content can never
-//     land on top of something the visitor actually did.
-import { byId } from './collection'
-import { networkWallets, walletByAddress, type NetworkWallet } from './network'
-import { hashString, pick, pickDistinct, randInt, rngFrom, type Rng } from './rng'
-import { serial } from './xployee'
+// Nothing is fabricated. There used to be a seeder that wrote starter content
+// on first load — two live threads, a pending friend request, a priced trade
+// offer — drawn against wallets from network.ts, plus a `pairRoll` that
+// manufactured a friend graph across them. Both were built when those wallets
+// were invented. They are real addresses now, so a generator that puts words in
+// their mouths or asserts who they know is not flavour, it is fabrication about
+// actual users. An inbox that opens empty on day one is correct.
+//
+// One rule shapes the rest of the file: reads never throw. Corrupt JSON, a
+// hand-edited entry, blocked storage or an exhausted quota all degrade to an
+// empty inbox on a page that is otherwise fine.
+import { walletByAddress } from './network'
+import { hashString } from './rng'
 
 export type ThreadKind = 'message' | 'friend-request' | 'trade-offer'
 export type OfferStatus = 'pending' | 'accepted' | 'declined' | 'withdrawn'
@@ -76,8 +77,6 @@ export type TradeOfferDraft = Omit<TradeOffer, 'id' | 'from' | 'status' | 'at'>
 /** Long enough for a real pitch, short enough that storage stays bounded. */
 export const MESSAGE_MAX = 500
 
-const HOUR_MS = 60 * 60 * 1000
-
 // ---------------------------------------------------------------------------
 // Storage
 // ---------------------------------------------------------------------------
@@ -94,8 +93,6 @@ function keyFor(address: string): string {
 interface SocialState {
   /** Shape version. An entry written by a different one is discarded, not patched. */
   v: number
-  /** True once starter content has been written. The guard against re-seeding. */
-  seeded: boolean
   messages: Message[]
   /** Both directions, all statuses — the audit trail behind `friends`. */
   requests: FriendRequest[]
@@ -106,7 +103,7 @@ interface SocialState {
 const STATE_VERSION = 1
 
 function emptyState(): SocialState {
-  return { v: STATE_VERSION, seeded: false, messages: [], requests: [], friends: [], offers: [] }
+  return { v: STATE_VERSION, messages: [], requests: [], friends: [], offers: [] }
 }
 
 export function emptyInbox(): Inbox {
@@ -213,7 +210,6 @@ function coerceState(value: unknown): SocialState {
     : []
   return {
     v: STATE_VERSION,
-    seeded: value.seeded === true,
     messages: coerceMessages(value.messages),
     requests: coerceRequests(value.requests),
     friends: [...new Set(friends)],
@@ -319,157 +315,6 @@ export function handleFor(now: number, address: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Seeding
-// ---------------------------------------------------------------------------
-
-// Traders talking shop: short, lowercase, about desks and contracts rather than
-// about the app. {x} resolves to one of the sender's real serials, {d} to a desk
-// ticker they actually work — the flavour has to survive a click through to the
-// wallet page.
-const OPENERS = [
-  'saw your book on the tape. moving anything this epoch?',
-  'putting {x} up before the next epoch. want first look?',
-  'my {d} desk is printing. what are you running?',
-  'need one more X-RATED to close a set. what do you hold?',
-  '{x} rolls off contract friday. open to offers on it.',
-  'you sweeping the {d} desk? clean fills, respect.',
-  'rotating out of {d} into something with more skills. interested?',
-]
-
-const FOLLOWUPS = [
-  'no rush. offer stands through the epoch.',
-  'ignore that, filled it elsewhere. still worth talking.',
-  'ping me before you list, i pay over book.',
-  'also: your avg apy is filthy. what desk?',
-  'bumping this. quote me anything.',
-]
-
-const NOTES = [
-  'clean unit, never listed. firm.',
-  'need the xNFT for a hire this epoch. cheap for what it is.',
-  'downsizing the desk. take it or leave it.',
-  'first offer i have sent all epoch. do not sit on it.',
-]
-
-function fillTemplate(rng: Rng, wallet: NetworkWallet, template: string): string {
-  const id = wallet.xployeeIds.length > 0 ? pick(rng, wallet.xployeeIds) : 0
-  const x = byId(id)
-  const ticker = x && x.skills.length > 0 ? pick(rng, x.skills).skill.ticker : 'SPYx'
-  return template.replace('{x}', serial(id)).replace('{d}', ticker)
-}
-
-/**
- * Starter content, written once.
- *
- * An inbox that opens empty reads as broken, so the first load fabricates a
- * short history against real xNet wallets: two live threads with friends, one
- * pending friend request and one pending offer.
- *
- * Additive by construction. It only ever pushes, and it skips any counterparty
- * the visitor has already dealt with, so there is no path where seeding can
- * overwrite or duplicate real user data — even if the flag were somehow lost.
- */
-function seed(state: SocialState, address: string, now: number): void {
-  const wallets = networkWallets(now)
-  if (wallets.length < 4) return
-
-  // Ordered by address rather than by value, so the cast does not change as the
-  // clock moves portfolios around the leaderboard.
-  const pool = [...wallets].sort((a, b) => (a.address < b.address ? -1 : 1))
-  const rng = rngFrom('social', 'seed', address)
-  // Weighted by holdings — a big desk is the one that reaches out first.
-  const [pal, mate, suitor, dealer] = pickDistinct(rng, pool, 4, (w) => w.holdings)
-
-  const known = new Set<string>(state.friends)
-  for (const m of state.messages) known.add(m.from === address ? m.to : m.from)
-  for (const r of state.requests) known.add(r.from === address ? r.to : r.from)
-  for (const o of state.offers) known.add(o.from === address ? o.to : o.from)
-
-  // An old friend with an unread thread: opener plus a follow-up nudge.
-  if (!known.has(pal.address)) {
-    const opened = now - randInt(rng, 30, 96) * HOUR_MS
-    state.requests.push({
-      id: makeId('friend', pal.address, address, opened - HOUR_MS, state.requests.length),
-      from: pal.address,
-      to: address,
-      at: opened - HOUR_MS,
-      status: 'accepted',
-    })
-    state.friends.push(pal.address)
-    state.messages.push({
-      id: makeId('msg', pal.address, address, opened, state.messages.length),
-      from: pal.address,
-      to: address,
-      body: fillTemplate(rng, pal, pick(rng, OPENERS)),
-      at: opened,
-      read: false,
-    })
-    const nudge = opened + randInt(rng, 1, 20) * HOUR_MS
-    state.messages.push({
-      id: makeId('msg', pal.address, address, nudge, state.messages.length),
-      from: pal.address,
-      to: address,
-      body: pick(rng, FOLLOWUPS),
-      at: nudge,
-      read: false,
-    })
-  }
-
-  // A friend the visitor added themselves, mid-conversation.
-  if (!known.has(mate.address)) {
-    const added = now - randInt(rng, 40, 120) * HOUR_MS
-    state.requests.push({
-      id: makeId('friend', address, mate.address, added, state.requests.length),
-      from: address,
-      to: mate.address,
-      at: added,
-      status: 'accepted',
-    })
-    state.friends.push(mate.address)
-    const at = now - randInt(rng, 2, 28) * HOUR_MS
-    state.messages.push({
-      id: makeId('msg', mate.address, address, at, state.messages.length),
-      from: mate.address,
-      to: address,
-      body: fillTemplate(rng, mate, pick(rng, OPENERS)),
-      at,
-      read: false,
-    })
-  }
-
-  // A stranger wanting in.
-  if (!known.has(suitor.address)) {
-    const at = now - randInt(rng, 1, 12) * HOUR_MS
-    state.requests.push({
-      id: makeId('friend', suitor.address, address, at, state.requests.length),
-      from: suitor.address,
-      to: address,
-      at,
-      status: 'pending',
-    })
-  }
-
-  // A live offer. The dealer puts up units it genuinely holds and wants $xNFT
-  // back — negative xnft — so the offer is priced rather than a gift.
-  if (!known.has(dealer.address) && dealer.xployeeIds.length > 0) {
-    const at = now - randInt(rng, 1, 18) * HOUR_MS
-    const count = Math.min(dealer.xployeeIds.length, randInt(rng, 1, 2))
-    const offering = pickDistinct(rng, dealer.xployeeIds, count)
-    state.offers.push({
-      id: makeId('offer', dealer.address, address, at, state.offers.length),
-      from: dealer.address,
-      to: address,
-      offering: [...offering].sort((a, b) => a - b),
-      requesting: [],
-      xnft: -randInt(rng, 4, 24) * 50,
-      status: 'pending',
-      at,
-      note: pick(rng, NOTES),
-    })
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Projection
 // ---------------------------------------------------------------------------
 
@@ -524,25 +369,9 @@ function project(state: SocialState, address: string, now: number): Inbox {
 // API
 // ---------------------------------------------------------------------------
 
-/**
- * The visitor's state, seeded on first touch.
- *
- * Seeding on read is deliberate: whichever surface they open first — the inbox
- * or their own profile's friends list — is the one that populates it, and the
- * flag persists in the same write so it happens exactly once.
- */
-function ensureSeeded(address: string, now: number): SocialState {
-  const state = readState(address)
-  if (state.seeded) return state
-  seed(state, address, now)
-  state.seeded = true
-  writeState(address, state)
-  return state
-}
-
 export function loadInbox(address: string, now: number): Inbox {
   if (!address) return emptyInbox()
-  return project(ensureSeeded(address, now), address, now)
+  return project(readState(address), address, now)
 }
 
 export function sendMessage(address: string, to: string, body: string, now: number): void {
@@ -664,43 +493,27 @@ export function respondToOffer(address: string, id: string, status: OfferStatus)
   })
 }
 
-/**
- * Wipe this wallet's social state. The key goes entirely, so the next load
- * re-seeds — a reset means "back to how it shipped", not "empty forever".
- */
+/** Wipe this wallet's social state. */
 export function clearSocial(address: string): void {
   if (!address) return
   removeRaw(keyFor(address))
 }
 
 /**
- * Probability that any two simulated wallets know each other. Across 96
- * candidates this averages just under six friends per wallet, with enough
- * spread that some desks are clearly better connected than others.
+ * Who this wallet has actually added.
+ *
+ * One list, stored, for every address. There used to be two paths: a stored one
+ * for the visitor, and for any wallet on xNET a roll of `pairRoll` at 6% against
+ * every other wallet, which manufactured a plausible social graph across the 97
+ * fabricated traders.
+ *
+ * That second path was a fuse. xNET is now real wallets — everyone who mints
+ * lands in it — so as the network grew the roll would have started asserting
+ * friendships between real strangers who had never met, on their real
+ * addresses, with no way for either to remove one. Same reason the inbox
+ * seeder is gone: it fabricated DMs and trade offers *from* those wallets.
  */
-const SIM_FRIEND_P = 0.06
-
-/**
- * Symmetric by construction: the seed is the unordered pair, so A lists B
- * exactly when B lists A. A per-wallet roll would produce one-way friendships
- * that look like a bug the moment you click through to the other profile.
- */
-function pairRoll(a: string, b: string): number {
-  const lo = a < b ? a : b
-  const hi = a < b ? b : a
-  return rngFrom('social', 'friend', lo, hi)()
-}
-
-export function friendsOf(address: string, now: number): string[] {
+export function friendsOf(address: string): string[] {
   if (!address) return []
-  // Only simulated wallets live in network.ts; anything else is the visitor's
-  // own connected wallet, whose friends are real and stored.
-  if (!walletByAddress(now, address)) return [...ensureSeeded(address, now).friends]
-
-  const out: string[] = []
-  for (const w of networkWallets(now)) {
-    if (w.address === address) continue
-    if (pairRoll(address, w.address) < SIM_FRIEND_P) out.push(w.address)
-  }
-  return out.sort()
+  return [...readState(address).friends]
 }

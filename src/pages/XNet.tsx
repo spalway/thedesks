@@ -7,7 +7,7 @@ import { networkStats, searchWallets, topEarners, type NetworkWallet } from '../
 import { getTier } from '../lib/tiers'
 import { byId } from '../lib/collection'
 import { useNow } from '../lib/useNow'
-import { num, pct, usd, usdCompact, shortAddress } from '../lib/format'
+import { num, pct, usd, usdCompact, shortAddress, plural } from '../lib/format'
 
 type Sort = 'value' | 'yield' | 'holdings'
 const PAGE = 30
@@ -34,7 +34,7 @@ export function XNet() {
 
   return (
     <div className="space-y-5">
-      <Panel title="xNET — The Network" right={`${num(stats.wallets)} wallets`}>
+      <Panel title="xNET — The Network" right={plural(stats.wallets, 'wallet')}>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Stat label="Wallets" value={num(stats.wallets)} sub="holding xployees" />
           <Stat label="Network Value" value={usdCompact(stats.totalValue)} sub="all books combined" />
@@ -164,7 +164,7 @@ function LeaderCard({ wallet, rank }: { wallet: NetworkWallet; rank: number }) {
         <div className="min-w-0 flex-1 space-y-2">
           <XBossBadge rank={wallet.xBoss} size="lg" />
           <div className="flex flex-wrap items-center gap-2">
-            <Chip tone="mute">{num(wallet.holdings)} xployees</Chip>
+            <Chip tone="mute">{plural(wallet.holdings, 'xployee')}</Chip>
             <Chip tone="mute">{pct(wallet.avgApy, 1)} APY</Chip>
           </div>
           <div className="space-y-1 border-t border-rule pt-2 text-[10px]">

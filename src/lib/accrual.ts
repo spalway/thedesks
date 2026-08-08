@@ -8,8 +8,18 @@ export const EPOCH_MS = 24 * 60 * 60 * 1000
 /** Epochs per year, used to annualise trailing figures. */
 export const EPOCHS_PER_YEAR = 365
 
-/** Protocol genesis. Fixed so epoch numbering is stable across machines. */
-export const GENESIS = Date.UTC(2026, 0, 6)
+/**
+ * Protocol genesis — day one. Fixed so epoch numbering is stable across
+ * machines.
+ *
+ * This is the launch date, not an earlier date the protocol did not exist for.
+ * It used to sit seven months back, which meant a site that had never been
+ * deployed opened on "epoch 213" with workers carrying most of a year of
+ * accrued yield. Everything downstream of this constant — tenure, book value,
+ * trailing APY, the settlement ledger — is measured from here, so moving it to
+ * launch is what makes those figures start at zero and grow honestly.
+ */
+export const GENESIS = Date.UTC(2026, 7, 7)
 
 export function epochAt(now: number): number {
   return Math.max(0, Math.floor((now - GENESIS) / EPOCH_MS))

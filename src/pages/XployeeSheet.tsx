@@ -2,10 +2,17 @@ import { Link, useParams } from 'react-router-dom'
 import { Panel, TierBadge, Table, Th, Td, Tr, Stat, Chip, LinkButton, cardTone, SerialTag } from '../components/ui'
 import { XployeeArt } from '../components/XployeeArt'
 import { backgroundFor } from '../lib/backgrounds'
-import { byId } from '../lib/collection'
+import { byId, isMinted } from '../lib/collection'
 import { listingFor, contractMath, saleMath, XNFT_USD } from '../lib/market'
 import { SIM_RENT_FEE_BPS, SIM_SALE_FEE_BPS, bpsFraction } from '../lib/fees'
-import { accruedBySkill, accruedTotal, bookValue, trailingApy, yieldPerEpoch } from '../lib/accrual'
+import {
+  accruedBySkill,
+  accruedTotal,
+  bookValue,
+  trailingApy,
+  yieldPerEpoch,
+  EPOCHS_PER_YEAR,
+} from '../lib/accrual'
 import { effectiveApy } from '../lib/skills'
 import { useNow } from '../lib/useNow'
 import { usePrices } from '../lib/usePrices'
@@ -32,6 +39,9 @@ export function XployeeSheet() {
   const accrual = accruedBySkill(x, now)
   const trailing = trailingApy(x, now)
   const owned = Boolean(fromHoldings)
+  // Held by the protocol, or by this visitor. Anything else is a serial that
+  // exists as art and as nothing else yet.
+  const minted = owned || isMinted(x.id)
 
   return (
     <div className="space-y-4">
@@ -66,9 +76,12 @@ export function XployeeSheet() {
               </div>
               <div className="space-y-1 border-t border-rule pt-2 text-[11px]">
                 <Row label="Mint" value={<span title={x.mint}>{shortAddress(x.mint, 6, 6)}</span>} />
-                <Row label="Hired" value={dateOnly(x.hiredAt)} />
+                <Row
+                  label="Hired"
+                  value={minted ? dateOnly(x.hiredAt) : <span className="text-ink-faint">Not minted</span>}
+                />
                 <Row label="Desks worked" value={num(x.skills.length)} />
-                <Row label="Principal" value={usd(x.principal, 0)} />
+                <Row label={minted ? 'Principal' : 'Principal at hire'} value={usd(x.principal, 0)} />
               </div>
             </div>
           </Panel>
@@ -90,26 +103,55 @@ export function XployeeSheet() {
             scrolls the whole page sideways on a phone instead of scrolling the
             table inside its own box. */}
         <div className="min-w-0 space-y-4">
-          <Panel title="Book" accent={x.tier.shade}>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <Stat label="Book Value" value={usd(bookValue(x, now))} sub="principal + accrued" />
-              <Stat
-                label="Accrued"
-                value={<span className="tabular-nums">{usdLive(accruedTotal(x, now))}</span>}
-                sub="unclaimed, ticking"
-              />
-              <Stat
-                label="Trailing APY"
-                value={
-                  <span className="flex items-baseline gap-1.5">
-                    {pct(trailing.rate)}
-                    {trailing.estimated ? <Chip tone="outline">Est</Chip> : null}
-                  </span>
-                }
-                sub="30-epoch window"
-              />
-              <Stat label="Per Epoch" value={usd(yieldPerEpoch(x), 3)} sub="at current rate" />
-            </div>
+          {/* An unminted serial has no book. It has never been hired, so nothing
+              has accrued against it and there is nothing to claim — a book value
+              and a ticking balance here would be a position the protocol
+              invented. What is true and useful about an unminted worker is what
+              it WOULD earn, so the panel switches to the projection and says so.
+              This is reachable: the landing page showcases unminted serials and
+              links straight to these sheets. */}
+          <Panel
+            title={minted ? 'Book' : 'Projected Book'}
+            accent={x.tier.shade}
+            right={minted ? undefined : 'not minted'}
+          >
+            {minted ? (
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                <Stat label="Book Value" value={usd(bookValue(x, now))} sub="principal + accrued" />
+                <Stat
+                  label="Accrued"
+                  value={<span className="tabular-nums">{usdLive(accruedTotal(x, now))}</span>}
+                  sub="unclaimed, ticking"
+                />
+                <Stat
+                  label="Trailing APY"
+                  value={
+                    <span className="flex items-baseline gap-1.5">
+                      {pct(trailing.rate)}
+                      {trailing.estimated ? <Chip tone="outline">Est</Chip> : null}
+                    </span>
+                  }
+                  sub="30-epoch window"
+                />
+                <Stat label="Per Epoch" value={usd(yieldPerEpoch(x), 3)} sub="at current rate" />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <Stat label="Opening Book" value={usd(x.principal, 0)} sub="principal at hire" />
+                  <Stat label="Accrued" value="—" sub="nothing hired, nothing earned" />
+                  <Stat label="Blended APY" value={pct(x.apy)} sub="across its desks" />
+                  <Stat label="Per Epoch" value={usd(yieldPerEpoch(x), 3)} sub="once hired" />
+                </div>
+                <p className="mt-4 border-t border-rule pt-3 text-[11px] leading-relaxed text-ink-mute">
+                  Nobody holds {serial(x.id)}. Every xployee is generated from its serial, so this is
+                  exactly what that number is — it just has not been drawn yet.{' '}
+                  <Link to="/mint" className="underline">
+                    Hire one →
+                  </Link>
+                </p>
+              </>
+            )}
           </Panel>
 
           <Panel title="Skills — Desks Worked" accent={x.tier.shade} right={`${x.skills.length} of 4`}>
@@ -123,7 +165,10 @@ export function XployeeSheet() {
                   <Th align="right">24h</Th>
                   <Th align="right">Prof.</Th>
                   <Th align="right">Eff. APY</Th>
-                  <Th align="right">Accrued</Th>
+                  {/* Same rule as the Book panel above: an unminted serial has
+                      earned nothing per desk either, and a per-skill accrual
+                      column is the same invented position in smaller type. */}
+                  <Th align="right">{minted ? 'Accrued' : 'Per Epoch'}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -144,7 +189,9 @@ export function XployeeSheet() {
                       <Td align="right">{pct(row.held.proficiency, 0)}</Td>
                       <Td align="right">{pct(effectiveApy(row.held))}</Td>
                       <Td align="right" className="tabular-nums">
-                        {usdLive(row.usd)}
+                        {minted
+                          ? usdLive(row.usd)
+                          : usd((x.principal / x.skills.length) * effectiveApy(row.held) / EPOCHS_PER_YEAR, 3)}
                       </Td>
                     </Tr>
                   )

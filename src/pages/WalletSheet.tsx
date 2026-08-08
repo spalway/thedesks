@@ -50,8 +50,7 @@ export function WalletSheet() {
   const profile = publicProfileFor(wallet, viewer)
   const crew = crewOf(wallet)
 
-  // Their friends are deterministic; the visitor's own are real.
-  const friends = friendsOf(wallet.address, now).map((a) => ({ address: a, handle: handleFor(now, a) }))
+  const friends = friendsOf(wallet.address).map((a) => ({ address: a, handle: handleFor(now, a) }))
 
   const inbox = viewer ? loadInbox(viewer, now) : null
   const alreadyFriend = viewer ? isFriend(viewer, wallet.address) : false

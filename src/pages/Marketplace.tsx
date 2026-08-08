@@ -46,6 +46,10 @@ export function Marketplace() {
   const [sort, setSort] = useState<Sort>('id')
   const [limit, setLimit] = useState(PAGE)
 
+  // Read once per render: floorPrice() walks the whole board, and the value is
+  // used twice — for the figure and for the empty-state it switches to.
+  const floor = floorPrice()
+
   const browse = useMemo(() => {
     let list = collection()
     if (tier !== 'all') list = list.filter((x) => x.tier.id === tier)
@@ -79,10 +83,16 @@ export function Marketplace() {
       >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Stat label="Workforce" value={num(collection().length)} sub="xployees in circulation" />
+          {/* An em dash while the board is empty. `xnft(0)` renders "0.00 xNFT",
+              which reads as the cheapest ask on the board rather than as the
+              absence of one — and it is the one number a visitor uses to decide
+              whether minting is cheaper than buying. */}
           <Stat
             label="Floor"
-            value={<span className="keep-case">{xnft(floorPrice())}</span>}
-            sub="lowest ask, before fee"
+            value={
+              floor > 0 ? <span className="keep-case">{xnft(floor)}</span> : <span>—</span>
+            }
+            sub={floor > 0 ? 'lowest ask, before fee' : 'no listings yet'}
           />
           <Stat label="For Sale" value={num(saleListings().length)} sub="ownership transfers" />
           <Stat label="For Contract" value={num(contractListings().length)} sub="yield rentals" />
@@ -167,8 +177,8 @@ export function Marketplace() {
         <p className="mt-4 max-w-3xl text-[11px] leading-relaxed text-ink-mute">
           {mode === 'browse' ? (
             <>
-              Every xployee in circulation. Rarity is skill count — an X-RATED works four desks at once,
-              and three percent of the workforce does.
+              Every xployee in circulation — one, until people mint. Rarity is skill count: an X-RATED
+              works four desks at once, and only three percent of the 5,000 will ever be one.
             </>
           ) : mode === 'sale' ? (
             <>

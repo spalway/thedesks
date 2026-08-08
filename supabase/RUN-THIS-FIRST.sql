@@ -15281,22 +15281,22 @@ comment on column public.xployees.apy is
 -- SECTION 10 of 16 — 20260806090500_seed_xnet_genesis.sql
 -- =========================================================================
 
--- xNFTs index — seed: the genesis crew.
+-- xNFTs index — seed: the genesis holding.
 --
--- 35 xployees (2 xrated, 3 expert, 10 mid, 20 entry), held by the project wallet.
+-- 1 xployee: #0000 X-RATED, held by the project wallet.
 --
 -- GENERATED — do not edit by hand. Run:
 --   npx vite-node scripts/gen-genesis-seed.ts
 --
--- This replaces a hand-written seed of 512 xployees across 97 invented wallets.
--- That shape suited a demo and would misrepresent a launch: none of those
--- addresses existed, and a protocol on its first day showing a hundred holders
--- and an active secondary market is claiming a history it does not have.
+-- This is the whole shipped state of the index. Everything else a visitor sees
+-- — listings, other wallets, activity, earnings history — is absent because it
+-- has not happened yet. Two earlier versions of this file seeded 512 xployees
+-- over 97 invented wallets and then 35 over one; both claimed a history the
+-- protocol did not have, and none of those addresses existed.
 --
--- The serials below are not the first 35 of the reveal permutation. They are
--- drawn from it in order but filtered to a fixed rarity mix, so a cold visit
--- shows every tier including X-RATED — which a natural draw of 35 usually would
--- not. src/lib/collection.ts is the source; this file is its output.
+-- Rarity is positional, so serial 0 is the first X-RATED in the supply. The
+-- hire timestamp is protocol genesis, so this worker opens with zero accrued
+-- yield and earns from day one like every xployee minted after it.
 --
 -- Ownership is a placeholder until an operator runs assign_genesis_crew().
 
@@ -15315,41 +15315,7 @@ create policy genesis_crew_read
 revoke insert, update, delete on public.genesis_crew from anon, authenticated;
 
 insert into public.genesis_crew (serial, owner, hired_at) values
-  (2867, 'GENESIS-UNASSIGNED', 1767657600000),
-  (995, 'GENESIS-UNASSIGNED', 1767986670251),
-  (3679, 'GENESIS-UNASSIGNED', 1768651490308),
-  (3355, 'GENESIS-UNASSIGNED', 1768944821328),
-  (1885, 'GENESIS-UNASSIGNED', 1769569224991),
-  (62, 'GENESIS-UNASSIGNED', 1769910465286),
-  (2967, 'GENESIS-UNASSIGNED', 1770346456301),
-  (2234, 'GENESIS-UNASSIGNED', 1770863633311),
-  (3928, 'GENESIS-UNASSIGNED', 1771354114351),
-  (2227, 'GENESIS-UNASSIGNED', 1771484494534),
-  (2638, 'GENESIS-UNASSIGNED', 1772230185173),
-  (2007, 'GENESIS-UNASSIGNED', 1772682735848),
-  (3020, 'GENESIS-UNASSIGNED', 1773102434541),
-  (4745, 'GENESIS-UNASSIGNED', 1773585814547),
-  (4511, 'GENESIS-UNASSIGNED', 1773790636519),
-  (284, 'GENESIS-UNASSIGNED', 1774293838924),
-  (2823, 'GENESIS-UNASSIGNED', 1774884843479),
-  (3480, 'GENESIS-UNASSIGNED', 1775144992924),
-  (731, 'GENESIS-UNASSIGNED', 1775616238942),
-  (4109, 'GENESIS-UNASSIGNED', 1776009429812),
-  (1852, 'GENESIS-UNASSIGNED', 1776584993621),
-  (3354, 'GENESIS-UNASSIGNED', 1777122024305),
-  (3591, 'GENESIS-UNASSIGNED', 1777379645745),
-  (3138, 'GENESIS-UNASSIGNED', 1777994586764),
-  (295, 'GENESIS-UNASSIGNED', 1778394502750),
-  (2087, 'GENESIS-UNASSIGNED', 1778873094175),
-  (3863, 'GENESIS-UNASSIGNED', 1779234216680),
-  (1291, 'GENESIS-UNASSIGNED', 1779592342265),
-  (1289, 'GENESIS-UNASSIGNED', 1780052283096),
-  (1261, 'GENESIS-UNASSIGNED', 1780514789959),
-  (1706, 'GENESIS-UNASSIGNED', 1781051749925),
-  (42, 'GENESIS-UNASSIGNED', 1781311199844),
-  (1200, 'GENESIS-UNASSIGNED', 1782044619537),
-  (786, 'GENESIS-UNASSIGNED', 1782479171317),
-  (1532, 'GENESIS-UNASSIGNED', 1782897129998)
+  (0, 'GENESIS-UNASSIGNED', 1786060800000)
 on conflict (serial) do nothing;
 
 -- ---------------------------------------------------------------------------

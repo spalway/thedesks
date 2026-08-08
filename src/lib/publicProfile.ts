@@ -1,44 +1,19 @@
 // Public-facing profile for any wallet on xNET.
 //
 // The visitor's own profile is real, editable and stored locally. Everyone
-// else's is generated deterministically from their address, so clicking through
-// to another trader shows a populated profile instead of an empty shell — the
-// directory would feel dead otherwise.
-import { rngFrom, pick, randInt } from './rng'
+// else's is whatever they have actually published, which before anyone has
+// published anything is nothing.
+//
+// This used to invent one: a bio drawn from a table of twelve openers and eight
+// closers, and a Twitter handle for roughly two thirds of wallets. That filled
+// out a directory of 97 fabricated traders. There is now exactly one wallet on
+// the network — the project's own — so the generator's entire output would have
+// been a made-up bio and a made-up social link attached to the operator's real
+// address. A blank profile is the truth and the UI already renders it.
 import { loadProfile, type Profile } from './profile'
 import { byId } from './collection'
 import type { NetworkWallet } from './network'
 import type { Xployee } from './xployee'
-
-const BIO_OPENERS = [
-  'Running a tight desk.',
-  'Long the boring stuff.',
-  'Here for the dividends, staying for the drama.',
-  'Payroll is a portfolio.',
-  'I hire, I never fire.',
-  'Building a crew, one epoch at a time.',
-  'Quietly compounding.',
-  'My xployees work harder than I do.',
-  'Contracts out, yield in.',
-  'Small crew, high conviction.',
-  'Collecting desks like baseball cards.',
-  'Never sold an X-RATED. Never will.',
-] as const
-
-const BIO_CLOSERS = [
-  'DMs open for contracts.',
-  'Will trade for semis exposure.',
-  'Not selling the flagship.',
-  'Always bidding the floor.',
-  'Ask me about the bills desk.',
-  'Taking offers on the bench.',
-  'Buying anything with a Chain Teller.',
-  'Yield is the only scoreboard.',
-  '',
-  '',
-] as const
-
-const HANDLE_SUFFIX = ['', '', '_xyz', '.sol', '_eth', '01', '_hq'] as const
 
 export interface PublicProfile extends Profile {
   address: string
@@ -67,27 +42,17 @@ export function publicProfileFor(wallet: NetworkWallet, viewer: string | null): 
     }
   }
 
-  const rng = rngFrom('publicprofile', wallet.address)
-  const opener = pick(rng, BIO_OPENERS)
-  const closer = pick(rng, BIO_CLOSERS)
-  const bio = closer ? `${opener} ${closer}` : opener
-
-  // Roughly two thirds of traders link a socials account.
-  const hasTwitter = rng() < 0.68
-  const twitter = hasTwitter ? `${wallet.handle}${pick(rng, HANDLE_SUFFIX)}`.slice(0, 15) : ''
-
-  // Their pfp is one of their own xployees, biased toward the rarest.
-  const crew = wallet.xployeeIds.map((id) => byId(id)).filter((x): x is Xployee => Boolean(x))
-  const sorted = [...crew].sort((a, b) => b.tier.skills - a.tier.skills)
-  const pick_ = sorted.length > 0 ? sorted[Math.min(sorted.length - 1, randInt(rng, 0, 1))] : null
+  // The rarest xployee they hold. Not invented — it is derived from what the
+  // wallet actually owns, and it is null for a wallet that owns nothing.
+  const rarest = crewOf(wallet)[0] ?? null
 
   return {
     address: wallet.address,
     username: wallet.handle,
     displayName: wallet.handle,
-    bio,
-    twitter,
-    pfpXployeeId: pick_ ? pick_.id : null,
+    bio: '',
+    twitter: '',
+    pfpXployeeId: rarest ? rarest.id : null,
     isOwn: false,
   }
 }

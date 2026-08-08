@@ -3,9 +3,27 @@ import { hashString, mulberry32, pickDistinct, rngFrom, fakeAddress } from './rn
 import { TIERS, tierForId } from './tiers'
 import { SKILLS, rollSkills, blendedApy, effectiveApy } from './skills'
 import { buildXployee, MAX_SUPPLY } from './xployee'
-import { accruedTotal, bookValue, trailingApy, EPOCH_MS } from './accrual'
-import { collection, HIRED_COUNT, mintOrder, serialForMint, tierCounts } from './collection'
-import { contractMath, type ContractListing } from './market'
+import { accruedTotal, bookValue, trailingApy, EPOCH_MS, GENESIS } from './accrual'
+import {
+  byId,
+  collection,
+  GENESIS_SERIAL,
+  HIRED_COUNT,
+  mintOrder,
+  serialForMint,
+  showcase,
+  SHOWCASE_COUNT,
+  takenSerials,
+  tierCounts,
+} from './collection'
+import {
+  contractMath,
+  contractListings,
+  floorPrice,
+  listings,
+  saleListings,
+  type ContractListing,
+} from './market'
 import { buildAvatar, GRID } from './avatar'
 import { UNIFORMS, HEADS, FACES } from './xployee'
 import { seedSparks, stepSparks, sparkColor } from './sparks'
@@ -257,9 +275,6 @@ describe('collection', () => {
   })
 
   it('regenerates identically across calls', () => {
-    // Index inside the genesis crew, which is 35 rather than the 512 this once
-    // assumed. Reading past the end returned undefined and failed on `.mint`
-    // with a message that said nothing about the real cause.
     const at = HIRED_COUNT - 1
     const a = collection()[at]
     const b = collection()[at]
@@ -267,30 +282,108 @@ describe('collection', () => {
     expect(a.tier.id).toBe(b.tier.id)
   })
 
-  it('has exactly the genesis crew the launch is configured for', () => {
-    const counts = tierCounts()
-    expect(counts.xrated).toBe(2)
-    expect(counts.expert).toBe(3)
-    expect(counts.mid).toBe(10)
-    expect(counts.entry).toBe(20)
-    expect(collection()).toHaveLength(35)
+  it('ships one holding: #0000, X-RATED, the project wallet', () => {
+    // This is the entire on-chain state at launch. It was 35 across four tiers,
+    // and 512 over 97 invented wallets before that. Every version of that was a
+    // history the protocol did not have.
+    expect(collection()).toHaveLength(1)
+    expect(HIRED_COUNT).toBe(1)
+    expect(collection()[0].id).toBe(GENESIS_SERIAL)
+    expect(GENESIS_SERIAL).toBe(0)
+    // Rarity is positional, so serial 0 is the first X-RATED in the supply.
+    // Asserted through tierForId rather than hardcoded, so a change to the
+    // rarity layout fails here rather than silently shipping a green flagship.
+    expect(collection()[0].tier.id).toBe('xrated')
+    expect(tierForId(0, MAX_SUPPLY).id).toBe('xrated')
   })
 
-  it('does not hand a new minter a serial the genesis crew already holds', () => {
-    // The crew is drawn from the reveal order but filtered by tier, so it is not
-    // a prefix of that order — the next mint has to skip what is taken.
-    const taken = new Set(collection().map((x) => x.id))
+  it('opens with no accrued yield', () => {
+    // Hired at genesis, and genesis is the launch date. A backdated hire time
+    // is how the old build opened with most of a year of earnings already on
+    // the books.
+    const x = collection()[0]
+    expect(x.hiredAt).toBe(GENESIS)
+    expect(accruedTotal(x, GENESIS)).toBe(0)
+    expect(bookValue(x, GENESIS)).toBe(x.principal)
+  })
+
+  it('counts only what is owned', () => {
+    const counts = tierCounts()
+    expect(counts).toEqual({ xrated: 1, expert: 0, mid: 0, entry: 0 })
+  })
+
+  it('does not hand a new minter the serial the project wallet holds', () => {
     for (let position = 0; position < 40; position++) {
-      expect(taken.has(serialForMint(position))).toBe(false)
+      expect(serialForMint(position)).not.toBe(GENESIS_SERIAL)
     }
     // And still deals distinct serials to distinct positions.
     const dealt = new Set(Array.from({ length: 40 }, (_, i) => serialForMint(i)))
     expect(dealt.size).toBe(40)
   })
+})
 
-  it('contains at least one of every tier', () => {
-    const seen = new Set(collection().map((x) => x.tier.id))
+describe('the landing-page showcase', () => {
+  it('spans every rarity', () => {
+    // The whole reason it exists: the collection is one X-RATED, so without
+    // this the landing page could not show what the other three look like.
+    const seen = new Set(showcase().map((x) => x.tier.id))
     for (const tier of TIERS) expect(seen.has(tier.id)).toBe(true)
+    expect(showcase()).toHaveLength(SHOWCASE_COUNT)
+  })
+
+  it('is not owned, and is not counted anywhere', () => {
+    const owned = new Set(collection().map((x) => x.id))
+    for (const x of showcase()) expect(owned.has(x.id)).toBe(false)
+    // Not reserved either — these are serials a real minter can still draw, so
+    // they must not be in the taken set.
+    for (const x of showcase()) expect(takenSerials().has(x.id)).toBe(false)
+  })
+
+  it('picks workers that look unlike each other', () => {
+    // A shuffle alone will happily return two workers in the same uniform with
+    // the same head, which on a page whose only job is "look how varied these
+    // are" is the one outcome that must not happen.
+    const crew = showcase()
+    for (let i = 0; i < crew.length; i++) {
+      for (let j = i + 1; j < crew.length; j++) {
+        const a = crew[i].traits
+        const b = crew[j].traits
+        const shared =
+          (a.uniform === b.uniform ? 1 : 0) +
+          (a.head === b.head ? 1 : 0) +
+          (a.face === b.face ? 1 : 0) +
+          (a.accessory === b.accessory ? 1 : 0)
+        expect(`${i},${j} shared ${shared}`).toBe(`${i},${j} shared ${shared > 2 ? 'TOO MANY' : shared}`)
+      }
+    }
+  })
+
+  it('is stable across calls', () => {
+    expect(showcase().map((x) => x.id)).toEqual(showcase().map((x) => x.id))
+  })
+
+  it('resolves through byId, so a showcase card can link to a sheet', () => {
+    for (const x of showcase()) expect(byId(x.id)?.id).toBe(x.id)
+    // And byId still refuses anything outside the supply.
+    expect(byId(-1)).toBeUndefined()
+    expect(byId(MAX_SUPPLY)).toBeUndefined()
+    expect(byId(1.5)).toBeUndefined()
+  })
+})
+
+describe('the market at launch', () => {
+  it('has no listings', () => {
+    // Not a filter that happens to return nothing — the board is empty because
+    // nobody has listed. This used to roll ~18% of the collection onto it.
+    expect(listings()).toEqual([])
+    expect(saleListings()).toEqual([])
+    expect(contractListings()).toEqual([])
+  })
+
+  it('reports no floor rather than a floor of zero', () => {
+    // Overview renders an em dash off this. A floor of 0 would read as the
+    // cheapest ask on a board that does not exist.
+    expect(floorPrice()).toBe(0)
   })
 })
 

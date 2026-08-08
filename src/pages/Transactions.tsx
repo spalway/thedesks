@@ -8,7 +8,7 @@ import { yieldPerEpoch } from '../lib/accrual'
 import { serial } from '../lib/xployee'
 import { useNow } from '../lib/useNow'
 import { rngFrom } from '../lib/rng'
-import { dateTime, num, usd, xnft, shortAddress } from '../lib/format'
+import { dateTime, num, usd, xnft, shortAddress, plural } from '../lib/format'
 
 type EventKind = 'hire' | 'settle' | 'list' | 'contract'
 
@@ -68,7 +68,11 @@ function buildLedger(now: number): LedgerEvent[] {
   const currentEpoch = epochAt(now)
   for (let e = Math.max(0, currentEpoch - 30); e <= currentEpoch; e++) {
     const at = GENESIS + e * EPOCH_MS
-    const active = all.filter((x) => x.hiredAt <= at)
+    // Strictly before, not on or before. An epoch pays for work already done,
+    // so a worker hired at the instant the epoch opens has not earned it yet.
+    // With the whole crew hired at genesis this printed a settlement sitting on
+    // the same timestamp as the hire, paying a full epoch for zero elapsed time.
+    const active = all.filter((x) => x.hiredAt < at)
     if (active.length === 0) continue
     const paid = active.reduce((s, x) => s + yieldPerEpoch(x), 0)
     events.push({
@@ -76,7 +80,7 @@ function buildLedger(now: number): LedgerEvent[] {
       at,
       kind: 'settle',
       xployeeId: -1,
-      detail: `Epoch settled · ${num(active.length)} xployees paid`,
+      detail: `Epoch settled · ${plural(active.length, 'xployee')} paid`,
       amount: usd(paid, 2),
       mint: '',
     })

@@ -1,14 +1,15 @@
-// Emit the genesis-crew seed from the JS source of truth.
+// Emit the genesis seed from the JS source of truth.
 //
-// The previous version of this migration was hand-written and encoded 512
-// xployees across 97 invented wallets. It is now 35 held by the project wallet,
-// and hand-editing that a second time is how the database and the app drift
-// apart. This imports the same `collection()` the browser renders, so the two
-// cannot disagree — regenerate rather than edit.
+// This has shrunk twice. It began as a hand-written 512 xployees across 97
+// invented wallets, became 35 held by the project wallet, and is now the one
+// holding the protocol actually has on its first day. Importing the same
+// `collection()` the browser renders is what keeps the database and the app
+// from drifting — regenerate rather than edit.
 //
 //   npx vite-node scripts/gen-genesis-seed.ts
 import { writeFileSync } from 'node:fs'
-import { collection, GENESIS_CREW, HIRED_COUNT } from '../src/lib/collection'
+import { collection, HIRED_COUNT } from '../src/lib/collection'
+import { serial } from '../src/lib/xployee'
 
 const OUT =
   'C:/Users/skizp/crypto/new_projects/xnfts/supabase/migrations/20260806090500_seed_xnet_genesis.sql'
@@ -34,24 +35,24 @@ const rows = crew
   .map((x) => `  (${x.id}, '${SENTINEL}', ${Math.round(x.hiredAt)})`)
   .join(',\n')
 
-const summary = GENESIS_CREW.map((g) => `${g.count} ${g.tier}`).join(', ')
+const summary = crew.map((x) => `${serial(x.id)} ${x.tier.label}`).join(', ')
 
-const sql = `-- xNFTs index — seed: the genesis crew.
+const sql = `-- xNFTs index — seed: the genesis holding.
 --
--- ${HIRED_COUNT} xployees (${summary}), held by the project wallet.
+-- ${HIRED_COUNT} xployee: ${summary}, held by the project wallet.
 --
 -- GENERATED — do not edit by hand. Run:
 --   npx vite-node scripts/gen-genesis-seed.ts
 --
--- This replaces a hand-written seed of 512 xployees across 97 invented wallets.
--- That shape suited a demo and would misrepresent a launch: none of those
--- addresses existed, and a protocol on its first day showing a hundred holders
--- and an active secondary market is claiming a history it does not have.
+-- This is the whole shipped state of the index. Everything else a visitor sees
+-- — listings, other wallets, activity, earnings history — is absent because it
+-- has not happened yet. Two earlier versions of this file seeded 512 xployees
+-- over 97 invented wallets and then 35 over one; both claimed a history the
+-- protocol did not have, and none of those addresses existed.
 --
--- The serials below are not the first ${HIRED_COUNT} of the reveal permutation. They are
--- drawn from it in order but filtered to a fixed rarity mix, so a cold visit
--- shows every tier including X-RATED — which a natural draw of ${HIRED_COUNT} usually would
--- not. src/lib/collection.ts is the source; this file is its output.
+-- Rarity is positional, so serial 0 is the first X-RATED in the supply. The
+-- hire timestamp is protocol genesis, so this worker opens with zero accrued
+-- yield and earns from day one like every xployee minted after it.
 --
 -- Ownership is a placeholder until an operator runs assign_genesis_crew().
 
@@ -109,5 +110,5 @@ revoke all on function public.assign_genesis_crew() from anon, authenticated;
 `
 
 writeFileSync(OUT, sql)
-console.log(`wrote ${crew.length} genesis rows -> ${OUT.split('/').pop()}`)
-console.log(`serials: ${crew.map((x) => x.id).join(', ')}`)
+console.log(`wrote ${crew.length} genesis row(s) -> ${OUT.split('/').pop()}`)
+console.log(`serials: ${crew.map((x) => `${serial(x.id)} ${x.tier.label}`).join(', ')}`)

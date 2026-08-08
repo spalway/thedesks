@@ -1,45 +1,31 @@
-// The simulated collection. Deterministic, so 512 hired workers regenerate
-// identically on every machine with no database behind them.
+// What exists on chain at launch, and what the art looks like.
+//
+// Two separate ideas live here and must not be confused:
+//
+//   collection()  — xployees that are OWNED. At launch this is exactly one.
+//   showcase()    — xployees rendered as ART so the landing page can show the
+//                   range. Unminted, unowned, counted in nothing.
+//
+// Identity is a pure function of the serial (see xployee.ts), so a serial can be
+// drawn without being owned. That is what lets the showcase exist without
+// inventing a holder for it.
 import { buildXployee, MAX_SUPPLY, type Xployee } from './xployee'
-import { EPOCH_MS, GENESIS, epochAt } from './accrual'
+import { GENESIS, epochAt } from './accrual'
 import { rngFrom } from './rng'
-import { TIERS, tierForId, type TierId } from './tiers'
+import { TIERS, tierForId, tierRange, type TierId } from './tiers'
 
 /**
- * The genesis crew — what exists on the site before anyone mints.
+ * The project wallet's one holding: #0000.
  *
- * This was 512 xployees spread over 97 invented wallets, which was the right
- * shape for a demo and the wrong one for a launch: a brand-new protocol showing
- * a bustling secondary market is claiming a history it does not have.
- *
- * It is now one crew, held by the project wallet, sized so the landing page has
- * something to show and every rarity is represented. Real holders appear as they
- * mint.
+ * Rarity is positional, so serial 0 is the first X-RATED in the collection —
+ * see tierForId. One holding is the whole shipped state: a protocol on its
+ * first day has no history, and every previous version of this file invented
+ * one (512 xployees over 97 fabricated wallets, then 35 over one). Real holders
+ * appear as they mint.
  */
-export const GENESIS_CREW: { tier: TierId; count: number }[] = [
-  { tier: 'xrated', count: 2 },
-  { tier: 'expert', count: 3 },
-  { tier: 'mid', count: 10 },
-  { tier: 'entry', count: 20 },
-]
+export const GENESIS_SERIAL = 0
 
-export const HIRED_COUNT = GENESIS_CREW.reduce((n, g) => n + g.count, 0)
-
-/**
- * Hire times are spread deterministically from genesis to "now-ish". Using a
- * fixed reference instead of Date.now() keeps the collection stable — only
- * accrual moves with the clock.
- */
-const HIRING_WINDOW_EPOCHS = 180
-
-/** Keyed on mint POSITION, not serial — earlier mints hire earlier. */
-function hireTimeFor(position: number): number {
-  const rng = rngFrom('hire', String(position))
-  const base = (position / HIRED_COUNT) * HIRING_WINDOW_EPOCHS
-  const jitterEpochs = (rng() - 0.5) * 4
-  const epoch = Math.max(0, Math.min(HIRING_WINDOW_EPOCHS, base + jitterEpochs))
-  return GENESIS + epoch * EPOCH_MS
-}
+export const HIRED_COUNT = 1
 
 /**
  * Reveal order — a seeded permutation of every serial in the supply.
@@ -71,12 +57,20 @@ export function mintOrder(): readonly number[] {
 }
 
 /**
- * The serial the Nth mint receives, skipping anything the genesis crew holds.
+ * Serials already spoken for, which the mint must skip.
  *
- * Without the skip the first minter would be issued a serial the project wallet
- * is already displaying, because the crew is drawn from this same permutation
- * but filtered by tier rather than taken off the front.
+ * Only the project wallet's holding. Showcase serials are deliberately NOT in
+ * here: they are pictures of what the art can look like, not reservations, and
+ * burning six serials on decoration would be a real cost for a cosmetic reason.
+ * A minter can and should be able to draw one.
  */
+const TAKEN: ReadonlySet<number> = new Set([GENESIS_SERIAL])
+
+export function takenSerials(): ReadonlySet<number> {
+  return TAKEN
+}
+
+/** The serial the Nth mint receives, skipping anything already held. */
 export function serialForMint(position: number): number {
   const o = mintOrder()
   const taken = takenSerials()
@@ -94,59 +88,149 @@ export function serialForMint(position: number): number {
 let cache: Xployee[] | null = null
 
 /**
- * The genesis crew, in reveal order.
+ * Everything owned at launch.
  *
- * NOT simply the first HIRED_COUNT of the reveal order. That permutation is
- * uniform over the whole supply, so taking 35 from the front would follow the
- * natural distribution — about 1 X-RATED and 21 uncommons — and the landing page
- * would frequently show no X-RATED at all. GENESIS_CREW fixes the shape instead,
- * so every rarity is visible on a cold visit.
- *
- * Serials still come off the reveal permutation, in order, so these are drawn
- * from the same sequence a real mint draws from rather than being hand-picked.
- * Rarity is positional, so filtering by tier is just filtering by serial band.
+ * Hired at GENESIS, which is now the launch date rather than a backdated one —
+ * so this worker opens with zero accrued yield and earns from day one like any
+ * other. A fixed timestamp rather than Date.now() keeps it identical on every
+ * machine and lets the SQL seed carry the same number.
  */
 export function collection(): Xployee[] {
-  if (cache) return cache
-
-  const want = new Map<TierId, number>(GENESIS_CREW.map((g) => [g.tier, g.count]))
-  const picked: number[] = []
-
-  for (const serial of mintOrder()) {
-    const tier = tierForId(serial, MAX_SUPPLY).id
-    const left = want.get(tier) ?? 0
-    if (left <= 0) continue
-    want.set(tier, left - 1)
-    picked.push(serial)
-    if (picked.length === HIRED_COUNT) break
-  }
-
-  cache = picked.map((id, position) => buildXployee(id, hireTimeFor(position)))
+  if (!cache) cache = [buildXployee(GENESIS_SERIAL, GENESIS)]
   return cache
 }
 
-/**
- * Serials the genesis crew already holds.
- *
- * `serialForMint` walks the reveal order from a position, and the genesis crew
- * was drawn out of that same order — but NOT from its front, since it was
- * filtered by tier. So the next mint has to skip anything already taken, or the
- * first real minter is handed a serial the project wallet is already showing.
- */
-let takenCache: Set<number> | null = null
+// ---------------------------------------------------------------------------
+// showcase
+// ---------------------------------------------------------------------------
 
-export function takenSerials(): ReadonlySet<number> {
-  if (!takenCache) takenCache = new Set(collection().map((x) => x.id))
-  return takenCache
+/** How many of each tier the landing page shows off. Rarest first. */
+const SHOWCASE_MIX: { tier: TierId; count: number }[] = [
+  { tier: 'xrated', count: 2 },
+  { tier: 'expert', count: 2 },
+  { tier: 'mid', count: 2 },
+  { tier: 'entry', count: 2 },
+]
+
+export const SHOWCASE_COUNT = SHOWCASE_MIX.reduce((n, m) => n + m.count, 0)
+
+/**
+ * How unlike everything already chosen a candidate is.
+ *
+ * Four independent trait slots decide the silhouette, and a shuffle alone will
+ * happily hand back two workers in the same uniform with the same head — which
+ * on a page whose whole job is "look how varied these are" is the one outcome
+ * that must not happen. So candidates are scored against the running selection
+ * and the least similar wins.
+ *
+ * Higher is better. Ties break on the earlier reveal position, so the result is
+ * deterministic.
+ */
+function distinctness(candidate: Xployee, chosen: readonly Xployee[]): number {
+  let worst = Infinity
+  for (const other of chosen) {
+    let shared = 0
+    if (candidate.traits.uniform === other.traits.uniform) shared++
+    if (candidate.traits.head === other.traits.head) shared++
+    if (candidate.traits.face === other.traits.face) shared++
+    if (candidate.traits.accessory === other.traits.accessory) shared++
+    worst = Math.min(worst, 4 - shared)
+  }
+  return worst
 }
 
-// Serials are no longer contiguous, so array indexing would silently return the
-// wrong xployee. A map keyed on the real serial is the only correct lookup.
-let index: Map<number, Xployee> | null = null
+/**
+ * How deep into the reveal order to look for each tier's showcase picks.
+ *
+ * Bounded because the walk is over 5,000 serials and every candidate is built
+ * to read its traits. A few hundred candidates per tier is far more than enough
+ * variety and keeps this a cheap module-load.
+ */
+const SHOWCASE_POOL = 400
 
+let showcaseCache: Xployee[] | null = null
+
+/**
+ * A few unowned xployees, spanning every rarity, chosen to look unlike each
+ * other.
+ *
+ * These are NOT minted, NOT owned and NOT counted in any statistic. They exist
+ * so a launch-day landing page can show what the collection looks like without
+ * the protocol pretending anyone has bought one.
+ *
+ * Serials come off the reveal permutation, so these are numbers a real mint
+ * could genuinely draw rather than hand-picked favourites — and the project
+ * wallet's own holding is excluded so the page never shows it twice.
+ */
+export function showcase(): Xployee[] {
+  if (showcaseCache) return showcaseCache
+
+  const byTier = new Map<TierId, Xployee[]>()
+  for (const m of SHOWCASE_MIX) byTier.set(m.tier, [])
+
+  for (const serial of mintOrder()) {
+    if (serial === GENESIS_SERIAL) continue
+    const tier = tierForId(serial, MAX_SUPPLY).id
+    const pool = byTier.get(tier)
+    if (!pool || pool.length >= SHOWCASE_POOL) continue
+    pool.push(buildXployee(serial, GENESIS))
+    if ([...byTier.values()].every((p) => p.length >= SHOWCASE_POOL)) break
+  }
+
+  const picked: Xployee[] = []
+  for (const m of SHOWCASE_MIX) {
+    const pool = byTier.get(m.tier) ?? []
+    for (let n = 0; n < m.count; n++) {
+      let best: Xployee | null = null
+      let bestScore = -Infinity
+      for (const candidate of pool) {
+        if (picked.includes(candidate)) continue
+        const score = distinctness(candidate, picked)
+        if (score > bestScore) {
+          bestScore = score
+          best = candidate
+        }
+      }
+      if (best) picked.push(best)
+    }
+  }
+
+  showcaseCache = picked
+  return picked
+}
+
+// ---------------------------------------------------------------------------
+// lookups and aggregates
+// ---------------------------------------------------------------------------
+
+/**
+ * The xployee with this serial, owned or not.
+ *
+ * Identity is a pure function of the serial, so this resolves anything inside
+ * the supply — which is what lets a showcase card link to a detail sheet for a
+ * worker nobody has minted. Ownership is a separate question and is answered by
+ * `collection()` and by the caller's own holdings; the sheet already
+ * distinguishes them.
+ */
 export function byId(id: number): Xployee | undefined {
-  if (!index) index = new Map(collection().map((x) => [x.id, x]))
-  return index.get(id)
+  if (!Number.isInteger(id) || id < 0 || id >= MAX_SUPPLY) return undefined
+  if (id === GENESIS_SERIAL) return collection()[0]
+  return buildXployee(id, GENESIS)
+}
+
+/**
+ * Whether anybody holds this serial.
+ *
+ * The detail sheet renders for any serial in the supply, so it has to be able
+ * to say which it is looking at. An unminted worker has no book: it has never
+ * been hired, so nothing has accrued and there is nothing to claim. Presenting
+ * one with a book value and a ticking balance would be inventing a position.
+ *
+ * Only the protocol's own view. A visitor's local hires are theirs and the
+ * sheet checks those separately.
+ */
+export function isMinted(id: number): boolean {
+  return TAKEN.has(id)
 }
 
 /** Newest hires first. */
@@ -187,12 +271,32 @@ export function currentEpoch(now: number): number {
   return epochAt(now)
 }
 
-/** Tier supply table, for the distribution bar. */
+/**
+ * What the supply is laid out to be — not what has been minted.
+ *
+ * This used to report the composition of the seeded crew, which at a supply of
+ * one says "100% X-RATED" and is true but useless. Before anything is minted
+ * the honest and interesting number is the plan: how many of each rarity exist
+ * to be drawn, and which serial band each occupies.
+ */
 export function tierDistribution() {
   const counts = tierCounts()
-  return TIERS.map((tier) => ({
-    tier,
-    count: counts[tier.id],
-    share: counts[tier.id] / HIRED_COUNT,
-  }))
+  return TIERS.map((tier) => {
+    // From tierRange, not `supply * MAX_SUPPLY`: the last band absorbs the
+    // rounding so the four counts sum to exactly MAX_SUPPLY. Multiplying the
+    // shares independently does not, and a supply table that does not add up
+    // is the first thing a reader checks.
+    const band = tierRange(tier.id, MAX_SUPPLY)
+    const supply = band.end - band.start
+    return {
+      tier,
+      /** Owned right now. */
+      count: counts[tier.id],
+      /** Total that will ever exist at this rarity. */
+      supply,
+      /** Serial band, inclusive of start, exclusive of end. */
+      band,
+      share: supply / MAX_SUPPLY,
+    }
+  })
 }

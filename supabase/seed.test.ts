@@ -34,6 +34,7 @@ import { describe, expect, it } from 'vitest'
 import { MAX_SUPPLY, buildXployee, UNIFORMS, HEADS, FACES, ACCESSORIES } from '../src/lib/xployee'
 import { mintOrder, HIRED_COUNT, collection, serialForMint } from '../src/lib/collection'
 import { tierForId } from '../src/lib/tiers'
+import { GENESIS } from '../src/lib/accrual'
 import { networkWallets } from '../src/lib/network'
 
 const DIR = new URL('./migrations/', import.meta.url)
@@ -324,15 +325,16 @@ describe('the 7,900 skill rows in 20260806090400', () => {
   })
 })
 
-describe('the genesis crew in 20260806090500', () => {
+describe('the genesis holding in 20260806090500', () => {
   const sql = migration('20260806090500_seed_xnet_genesis.sql')
   const genesisRows = tuples(valuesBlock(sql, 'insert into public.genesis_crew', 'on conflict'))
 
-  it('seeds exactly the genesis crew, not a simulated network', () => {
-    // Was 512 xployees across 97 invented wallets. Those wallets did not exist,
-    // and seeding them made a first-day protocol look like it had a history.
+  it('seeds one holding, not a simulated network', () => {
+    // Was 512 xployees across 97 invented wallets, then 35 across one. Those
+    // wallets did not exist, and seeding them made a first-day protocol look
+    // like it had a history. This is the whole shipped index.
     expect(genesisRows).toHaveLength(HIRED_COUNT)
-    expect(HIRED_COUNT).toBe(35)
+    expect(HIRED_COUNT).toBe(1)
   })
 
   it('names the same serials collection() renders', () => {
@@ -340,11 +342,15 @@ describe('the genesis crew in 20260806090500', () => {
     expect(genesisRows.map((r) => Number(r[0]))).toEqual(crew)
   })
 
-  it('carries the rarity mix the landing page is meant to show', () => {
-    const crew = collection()
-    const counts: Record<string, number> = {}
-    for (const x of crew) counts[x.tier.id] = (counts[x.tier.id] ?? 0) + 1
-    expect(counts).toEqual({ xrated: 2, expert: 3, mid: 10, entry: 20 })
+  it('is #0000, the first X-RATED in the supply', () => {
+    expect(genesisRows.map((r) => Number(r[0]))).toEqual([0])
+    expect(collection()[0].tier.id).toBe('xrated')
+  })
+
+  it('hires at protocol genesis, so it opens with nothing accrued', () => {
+    // A backdated hire time is how the previous build shipped workers carrying
+    // most of a year of earnings on a site that had never been deployed.
+    expect(Number(genesisRows[0][2])).toBe(GENESIS)
   })
 
   it('agrees with the collection on hire time, to the millisecond', () => {
@@ -373,9 +379,9 @@ describe('the genesis crew in 20260806090500', () => {
 })
 
 describe('what the seed leaves for the mint', () => {
-  it('reserves only the genesis positions, so the pool is the rest of the supply', () => {
-    // 5000 - 35, and it is the number the mint page renders as "remaining".
-    expect(MAX_SUPPLY - HIRED_COUNT).toBe(4965)
+  it('reserves only the genesis holding, so the pool is the rest of the supply', () => {
+    // 5000 - 1, and it is the number the mint page renders as "remaining".
+    expect(MAX_SUPPLY - HIRED_COUNT).toBe(4999)
   })
 
   it('leaves every rare serial that is not already hired available to mint', () => {

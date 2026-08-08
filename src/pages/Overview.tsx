@@ -3,13 +3,13 @@ import { Panel, Stat, Bar, TierBadge, TierDot, LinkButton, Table, Th, Td, Tr, Mo
 import { XployeeArt } from '../components/XployeeArt'
 import { XBossBadge } from '../components/XBossBadge'
 import { PixelLogo } from '../components/PixelLogo'
-import { collection, recentHires, tierDistribution, totalPrincipal, SUPPLY, deskExposure } from '../lib/collection'
+import { collection, showcase, tierDistribution, totalPrincipal, SUPPLY, deskExposure } from '../lib/collection'
 import { accruedTotal, msUntilNextEpoch, epochAt } from '../lib/accrual'
 import { floorPrice, saleListings, contractListings } from '../lib/market'
 import { topEarners, networkStats } from '../lib/network'
 import { useNow } from '../lib/useNow'
 import { usePrices } from '../lib/usePrices'
-import { usd, usdCompact, num, pct, duration, xnft } from '../lib/format'
+import { usd, usdCompact, num, pct, duration, xnft, plural } from '../lib/format'
 import { serial } from '../lib/xployee'
 import { getStock } from '../lib/xstocks'
 
@@ -20,11 +20,20 @@ export function Overview() {
 
   const lifetimeYield = all.reduce((sum, x) => sum + accruedTotal(x, now), 0)
   const nav = totalPrincipal() + lifetimeYield
-  const avgApy = all.reduce((sum, x) => sum + x.apy, 0) / all.length
+  // Guarded: `all` is one xployee at launch and could in principle be none.
+  // Dividing by an empty collection is how a headline stat becomes NaN.
+  const avgApy = all.length > 0 ? all.reduce((sum, x) => sum + x.apy, 0) / all.length : 0
   const dist = tierDistribution()
   const desks = deskExposure().slice(0, 6)
   const leaders = topEarners(now, 5)
   const net = networkStats(now)
+  const floor = floorPrice()
+  const crew = showcase()
+  // By id, not dist[3] — TIERS is ordered commonest-first today and an editor
+  // reordering it would silently make this sentence quote the wrong number.
+  const xratedSupply = dist.find((d) => d.tier.id === 'xrated')?.supply ?? 0
+  const forSale = saleListings().length
+  const forHire = contractListings().length
 
   return (
     <div className="space-y-5">
@@ -41,10 +50,15 @@ export function Overview() {
           <Stat label="Protocol NAV" value={usdCompact(nav)} sub="principal + accrued" />
           <Stat label="Yield Accrued" value={usdCompact(lifetimeYield)} sub="lifetime, all xployees" />
           <Stat label="Avg APY" value={pct(avgApy)} sub="blended across desks" />
+          {/* An em dash, not xnft(0). A floor of "0 xNFT" reads as a price —
+              and the cheapest one on the board — when what is true is that
+              there is no board yet. */}
           <Stat
             label="Floor"
-            value={<span className="keep-case">{xnft(floorPrice())}</span>}
-            sub="lowest ask"
+            value={
+              floor > 0 ? <span className="keep-case">{xnft(floor)}</span> : <span>—</span>
+            }
+            sub={floor > 0 ? 'lowest ask' : 'no listings yet'}
           />
           <Stat
             label="Next Settlement"
@@ -55,9 +69,15 @@ export function Overview() {
       </Panel>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
-        <Panel title="Recent Hires" right={`${num(SUPPLY.hired)} total`}>
+        {/* Not "Recent Hires". Nothing has been hired — there is one worker on
+            the books and a list of one reads as an outage. What a launch-day
+            visitor actually wants is to see the art, so this shows unminted
+            workers across every rarity and says plainly that nobody owns them.
+            They are real serials off the reveal order, so any of them can still
+            be drawn. */}
+        <Panel title="The Workforce" right="unminted · sample">
           <div className="flex flex-wrap gap-4">
-            {recentHires(8).map((x) => (
+            {crew.map((x) => (
               <Link key={x.id} to={`/xployee/${x.id}`} className="group block w-[96px]">
                 <XployeeArt xployee={x} size={96} className="" />
                 <div className="mt-2 flex items-center gap-1.5">
@@ -70,16 +90,24 @@ export function Overview() {
               </Link>
             ))}
           </div>
-          <div className="mt-4 text-[10px] text-ink-faint">
-            Showing 8 of {num(SUPPLY.hired)}, newest first.{' '}
-            <Link to="/marketplace" className="underline">
-              Browse all →
+          <div className="mt-4 text-[10px] leading-relaxed text-ink-faint">
+            Every xployee is generated from its serial, so these are exactly what those numbers
+            look like — none of them has been minted, and any of them can still be drawn.{' '}
+            <Link to="/mint" className="underline">
+              Hire one →
             </Link>
           </div>
         </Panel>
 
-        <Panel title="Workforce Composition">
-          <Bar segments={dist.map((d) => ({ value: d.count, color: d.tier.color, label: d.tier.label }))} />
+        {/* Was "Workforce Composition", reporting the mix of what had been
+            minted. At a supply of one that says 100% X-RATED, which is true and
+            useless. Before anything is minted the number that means something
+            is the plan: how many of each rarity will ever exist, and which
+            serials they are. */}
+        <Panel title="Rarity Supply" right={`${num(SUPPLY.max)} max`}>
+          <Bar
+            segments={dist.map((d) => ({ value: d.supply, color: d.tier.color, label: d.tier.label }))}
+          />
           <div className="mt-4 space-y-2.5">
             {dist.map((d) => (
               <div key={d.tier.id} className="flex items-center justify-between gap-3">
@@ -91,14 +119,15 @@ export function Overview() {
                   </span>
                 </div>
                 <div className="text-[10px] tabular-nums">
-                  {num(d.count)} <span className="text-ink-faint">/ {pct(d.share, 1)}</span>
+                  {num(d.supply)} <span className="text-ink-faint">/ {pct(d.share, 1)}</span>
                 </div>
               </div>
             ))}
           </div>
           <div className="mt-5 border-t border-rule pt-4 text-[10px] leading-relaxed text-ink-mute">
-            Rarity is skill count. An X-RATED xployee works four desks at once — three percent of the
-            workforce does.
+            Rarity is skill count, and it is positional — a serial is itself a rarity claim. An
+            X-RATED xployee works four desks at once, and only {num(xratedSupply)} of them will
+            ever exist.
           </div>
         </Panel>
       </div>
@@ -140,7 +169,7 @@ export function Overview() {
           </div>
         </Panel>
 
-        <Panel title="xNET — Top Earners" right={`${num(net.wallets)} wallets`}>
+        <Panel title="xNET — Top Earners" right={plural(net.wallets, 'wallet')}>
           <Table>
             <thead>
               <tr>
@@ -176,7 +205,9 @@ export function Overview() {
           <div className="mt-4 flex items-center gap-3">
             <LinkButton to="/xnet">Open xNET →</LinkButton>
             <span className="text-[10px] text-ink-faint">
-              {num(saleListings().length)} for sale · {num(contractListings().length)} for hire
+              {forSale === 0 && forHire === 0
+                ? 'Nothing listed yet'
+                : `${num(forSale)} for sale · ${num(forHire)} for hire`}
             </span>
           </div>
         </Panel>

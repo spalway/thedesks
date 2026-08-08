@@ -65,7 +65,7 @@ Positional rarity has an obvious failure mode: hand serials out in ascending ord
 
 So serials are dealt from a **seeded reveal permutation** — `mintOrder()` in [src/lib/collection.ts](src/lib/collection.ts) shuffles all 5,000 serials once and `serialForMint(n)` hands out the *n*th entry. Every minter draws from the same bag regardless of when they arrive, and low numbers stay genuinely rare rather than merely early. The shuffle is seeded and cached, so the permutation regenerates identically on every machine with no database — the same property the rest of the collection relies on.
 
-One consequence for anyone touching the code: **a serial is not an array index.** The hired set is 512 non-contiguous serials out of 5,000, so `collection()[id]` returns the wrong xployee. Look up by serial with `byId()`.
+One consequence for anyone touching the code: **a serial is not an array index.** Serials are dealt out of the shuffle, so they are non-contiguous and `collection()[id]` returns the wrong xployee — or, now that the collection ships with one holding, nothing at all. Look up by serial with `byId()`, which resolves any serial in the supply whether or not anyone owns it.
 
 Colour appears **only** on rarity elements. The rest of the interface is white paper and black ink, which is what makes a tier readable at a glance across a dense grid.
 
@@ -140,7 +140,9 @@ only, keeping ~253kB out of the main bundle.
 
 So the wallet is **not** read-only: connect one with minting configured and the app will ask you to sign a real transfer. Nothing sends without a click, and every amount is stated before the button.
 
-**Simulated:** everything else, including **sales**. A sale is the one operation that needs both sides to deliver at once, and an atomic swap without an escrow program requires both parties to co-sign the same transaction — which a marketplace cannot arrange, since the seller has walked away by the time a buyer arrives. Escrow is what the abandoned program actually bought, so buying an xployee is a ledger entry and says so. The 512 xployees, their books, yield, listings, contracts and ledger are generated deterministically in-browser from a seeded RNG, so the whole collection regenerates identically on any machine with no database. Your own hires persist to `localStorage`.
+**Simulated:** everything else, including **sales**. A sale is the one operation that needs both sides to deliver at once, and an atomic swap without an escrow program requires both parties to co-sign the same transaction — which a marketplace cannot arrange, since the seller has walked away by the time a buyer arrives. Escrow is what the abandoned program actually bought, so buying an xployee is a ledger entry and says so. Every xployee’s identity, art, book and yield is generated deterministically in-browser from its serial, so the collection regenerates identically on any machine with no database. Your own hires persist to `localStorage`.
+
+**What ships is empty.** The index carries one holding — `#0000`, X-RATED, the project wallet — and nothing else: no listings, no other wallets, no activity, no earnings history. Earlier builds seeded 512 xployees across 97 invented wallets with an ≈18% order book rolled on top, which is the right shape for a demo and a fabricated history for a launch. The landing page shows a `showcase()` of unminted workers so the art is still visible; they are owned by nobody and counted in nothing.
 
 **What is not enforced.** With no program, the treasury is an ordinary wallet whose keypair the operator holds — not a PDA. A payout claim is an authorization the operator performs, not a permission the chain grants; whoever holds that key can move the fees anywhere. The fee holds inside any transaction this app builds, but nothing stops a trade arranged outside it, and there is no on-chain ceiling on the rate. [The spec](docs/superpowers/specs/2026-08-05-onchain-fees-supabase-design.md) §4.4 accounts for exactly what that trade cost.
 
@@ -170,7 +172,7 @@ The label voice is the `.ui` class — Roboto at weight 700, uppercase, tracked 
 | **DIRECTOR** | Black, white label |
 | **BOSS** | Quiet grey outline — deliberately unchanged, so the ladder reads bottom-to-top |
 
-The gold is anchored deep (`#7a5c0e` → `#d8b34a`) rather than on a bright mid-gold: white on mid-gold is barely legible, so the brightness lives in the sweep and the label carries a shadow. The sweep is an absolutely-positioned layer animating `transform`, not `background-position`, so it stays on the compositor — a directory of 97 badges would otherwise repaint continuously.
+The gold is anchored deep (`#7a5c0e` → `#d8b34a`) rather than on a bright mid-gold: white on mid-gold is barely legible, so the brightness lives in the sweep and the label carries a shadow. The sweep is an absolutely-positioned layer animating `transform`, not `background-position`, so it stays on the compositor — a directory of badges would otherwise repaint continuously.
 
 The lowercase `x` in `xNFTs`, `xployee` and every ticker (`$AAPLx`) is the brand — `.keep-case` exists to protect it from the uppercase rule. Don't remove it.
 

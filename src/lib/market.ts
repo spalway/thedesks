@@ -3,9 +3,7 @@
 // A contract is the differentiated trade here — the renter buys an xployee's
 // output for a term, the owner takes guaranteed income instead of variable
 // yield. Both sides of that bet are computed explicitly so the UI can show it.
-import { collection } from './collection'
 import { yieldPerEpoch } from './accrual'
-import { rngFrom } from './rng'
 import { XNFT_DECIMALS, fromRawUnits, rentQuote, saleQuote } from './fees'
 import type { Xployee } from './xployee'
 
@@ -165,48 +163,23 @@ export function contractMath(listing: ContractListing): ContractMath {
 }
 
 /**
- * Deterministic market. A slice of the collection is listed; the rest is held.
- * Prices scatter around fair value so the floor is meaningful and some
- * contracts are genuinely better deals than others.
+ * The order book.
+ *
+ * Empty, and empty on purpose. This used to roll an RNG over the collection and
+ * put ~18% of it on the market — 10% for sale, 8% up for hire — with prices
+ * scattered around fair value. That was a demo of what a busy board looks like,
+ * and shipping it would have opened the protocol with a secondary market in
+ * which no one had ever listed anything and no listed xployee could be bought.
+ *
+ * Listings appear when holders create them. Until then the board is empty and
+ * says so, and every consumer below already handles that: `floorPrice()`
+ * returns 0, and Marketplace renders its `Empty` states.
+ *
+ * The pricing and margin maths above is untouched — it is what a listing will
+ * be quoted with, and `fees.test.ts` still holds it to the fee schedule.
  */
-let cache: Listing[] | null = null
-
 export function listings(): Listing[] {
-  if (cache) return cache
-
-  const out: Listing[] = []
-  for (const x of collection()) {
-    const rng = rngFrom('market', x.mint)
-    const roll = rng()
-
-    // ~18% of the collection is on the market: 10% sales, 8% contracts.
-    if (roll < 0.1) {
-      const spread = 0.75 + rng() * 0.7 // 0.75x – 1.45x fair value
-      out.push({
-        kind: 'sale',
-        xployee: x,
-        price: Math.round(fairValueXnft(x) * spread),
-        listedAt: x.hiredAt,
-      })
-    } else if (roll < 0.18) {
-      const term = [7, 14, 30, 90][Math.floor(rng() * 4)]
-      // Fee scatters around expected output, so renter margin lands both ways.
-      // Kept fractional: one epoch of yield is only a few $xNFT, and rounding to
-      // whole tokens would collapse every listing to the same fee.
-      const expectedPerEpoch = yieldPerEpoch(x) / XNFT_USD
-      const spread = 0.7 + rng() * 0.7 // 0.7x – 1.4x expected yield
-      out.push({
-        kind: 'contract',
-        xployee: x,
-        feePerEpoch: Math.round(expectedPerEpoch * spread * 100) / 100,
-        term,
-        listedAt: x.hiredAt,
-      })
-    }
-  }
-
-  cache = out
-  return out
+  return []
 }
 
 export function saleListings(): SaleListing[] {

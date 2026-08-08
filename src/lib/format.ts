@@ -85,6 +85,18 @@ export function num(input: number, decimals = 0): string {
 }
 
 /**
+ * A count with its noun, pluralised.
+ *
+ * Exists because the network genuinely holds one wallet at launch, and every
+ * count that reads "1 wallets" is a small piece of evidence that nobody looked
+ * at the empty state. Handles the -s case only; pass `many` for anything
+ * irregular.
+ */
+export function plural(count: number, one: string, many = `${one}s`): string {
+  return `${num(count)} ${count === 1 ? one : many}`
+}
+
+/**
  * $xNFT amounts. Adaptive precision: an epoch fee is a couple of tokens while a
  * sale ask is thousands, and rounding both to integers would flatten every
  * contract fee to the same number.

@@ -1,5 +1,14 @@
 # xNFTs — Go-Live
 
+> **STALE — read as history, not as the current state.** This audit describes the repository on
+> 2026-08-05, two rounds of change ago. Since then the on-chain program was abandoned in favour of
+> composed SPL transfers, the addresses moved out of `VITE_` vars into `protocol_config`, and the
+> shipped collection went from 512 xployees across 97 invented wallets to a single holding —
+> `#0000`, X-RATED, the project wallet — with an empty order book, no other wallets, and no
+> activity. Every count below (512, 97, `HIRED_COUNT = 512`) is wrong now. The findings about what
+> is real versus simulated, and the risk sections, still hold. See [DEPLOY.md](DEPLOY.md) and the
+> README for the current shape.
+
 **Written:** 2026-08-05, from an audit of this repository at that date.
 **Scope:** what stands between the app as it exists on disk and a deployment that moves real value.
 **Not:** legal advice. §5 flags exposure and stops there.
