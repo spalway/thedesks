@@ -110,12 +110,30 @@ create policy protocol_config_read
 -- address, no project wallet, no RPC, no market links.
 grant select on public.protocol_config to anon, authenticated;
 
--- No write policy of any kind. With RLS on and no permissive policy for
--- insert/update/delete, the anon key cannot change these values — which matters
--- more here than anywhere else in the schema, because whoever controls
--- dev_wallet controls where every buyer's payment is sent. Edits happen through
--- the Supabase dashboard (service role) or an Edge Function, never the browser.
+-- Writes are denied twice, at two different layers, and BOTH are needed.
+--
+-- The revoke is a grant-level control. The three restrictive policies are the
+-- RLS-level one: restrictive policies AND together with everything else, so
+-- `false` is final and no permissive policy added later can grant a client
+-- write. They also show up in \d output instead of being an absence a reviewer
+-- has to notice.
+--
+-- This table originally had only the revoke. Every other table in the schema
+-- carries the restrictive trio — the first seven by hand in
+-- 20260805120200_rls_policies.sql, the next twenty-three in a loop in
+-- 20260806091100 — and that second file ends with an assertion that walks every
+-- table in `public` and raises if one is missing them. protocol_config was
+-- written after it, did not follow the pattern, and so aborted the whole final
+-- migration with
+--   P0001: table public.protocol_config is missing a restrictive write denial
 revoke insert, update, delete on public.protocol_config from anon, authenticated;
+
+create policy "protocol_config accepts no client insert" on public.protocol_config
+  as restrictive for insert to anon, authenticated with check (false);
+create policy "protocol_config accepts no client update" on public.protocol_config
+  as restrictive for update to anon, authenticated using (false) with check (false);
+create policy "protocol_config accepts no client delete" on public.protocol_config
+  as restrictive for delete to anon, authenticated using (false);
 
 comment on table public.protocol_config is
   'Single-row runtime config. Edited by the operator in the dashboard; read by every browser. Never writable with the anon key.';

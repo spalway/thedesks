@@ -36,7 +36,21 @@ create policy genesis_crew_read
 -- which looks like an auth failure and is a missing privilege.
 grant select on public.genesis_crew to anon, authenticated;
 
+-- Denied twice, at two layers, and both are needed. The revoke is grant-level;
+-- the restrictive policies are the RLS-level denial, and they AND together with
+-- everything else so `false` is final. Every other table in the schema carries
+-- this trio, and 20260806091100_rls_policies.sql ends with an assertion that
+-- walks every table in `public` and raises if one is missing it — so a table
+-- with only the revoke aborts that migration with
+--   P0001: table public.genesis_crew is missing a restrictive write denial
 revoke insert, update, delete on public.genesis_crew from anon, authenticated;
+
+create policy "genesis_crew accepts no client insert" on public.genesis_crew
+  as restrictive for insert to anon, authenticated with check (false);
+create policy "genesis_crew accepts no client update" on public.genesis_crew
+  as restrictive for update to anon, authenticated using (false) with check (false);
+create policy "genesis_crew accepts no client delete" on public.genesis_crew
+  as restrictive for delete to anon, authenticated using (false);
 
 insert into public.genesis_crew (serial, owner, hired_at) values
   (0, 'GENESIS-UNASSIGNED', 1786060800000)
