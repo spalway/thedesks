@@ -1,14 +1,16 @@
-// The X header: xployees -> the business -> money. No text.
+// The X header: the crew in formation, rarest at the front.
 //
-//   npx vite-node scripts/gen-banner.ts
+//   npm run banner
 //
-// A diagram, not a portrait row. The row showed what the product looks like and
-// said nothing about what it does; this states the whole pitch in one line —
-// workers go in, the firm runs, money comes out — without a word of copy.
+// A staggered V on black. One X-RATED leads, two EPIC flank it, then RARE, then
+// UNCOMMON — each rank a step further out, a step higher, a step smaller and a
+// step darker. Those four cues together are what make it read as depth rather
+// than as a row of differently-sized squares, and the order they run in is the
+// rarity ladder, so the composition states the hierarchy without a word of copy.
 //
-// Portraits are rendered through the same generator the site uses and the same
+// Portraits render through the same generator the site uses and the same
 // rasteriser scripts/export-art.mjs uses, so they are real members of the
-// collection. Everything else is pixel art drawn on the same grid discipline.
+// collection rather than drawings of one.
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,8 +21,8 @@ import { encodePng } from './lib/png.mjs'
 import { paintBackground, blitAvatar } from './lib/paint.mjs'
 import { buildAvatar } from '../src/lib/avatar'
 import { backgroundFor } from '../src/lib/backgrounds'
-import { collection } from '../src/lib/collection'
-import type { Xployee } from '../src/lib/xployee'
+import { showcase } from '../src/lib/collection'
+import { serial, type Xployee } from '../src/lib/xployee'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -30,12 +32,6 @@ const H = 500
 type RGB = [number, number, number]
 
 const INK: RGB = [0, 0, 0]
-const PAPER: RGB = [255, 255, 255]
-const STEEL: RGB = [0xc8, 0xcc, 0xd6]
-const STEEL_DK: RGB = [0x6d, 0x73, 0x82]
-const MONEY: RGB = [0x3d, 0xdc, 0x84]
-const MONEY_DK: RGB = [0x1f, 0x8f, 0x52]
-const ARROW: RGB = [0x8e, 0x8e, 0x96]
 
 const hex = (h: string): RGB => [
   parseInt(h.slice(1, 3), 16),
@@ -67,7 +63,15 @@ function rect(x0: number, y0: number, w: number, h: number, c: RGB) {
   }
 }
 
-function blit(src: Uint8Array, s: number, dx: number, dy: number) {
+/**
+ * Copy a portrait onto the canvas, optionally darkened.
+ *
+ * `dim` is the atmospheric cue. Smaller and higher alone read as "different
+ * sizes"; losing a little light as they recede is what makes the back ranks sit
+ * behind the front one rather than beside it. Kept shallow — at 0.7 the
+ * UNCOMMONs stop reading as green.
+ */
+function blit(src: Uint8Array, s: number, dx: number, dy: number, dim = 1) {
   for (let y = 0; y < s; y++) {
     const ty = dy + y
     if (ty < 0 || ty >= H) continue
@@ -76,26 +80,15 @@ function blit(src: Uint8Array, s: number, dx: number, dy: number) {
       if (tx < 0 || tx >= W) continue
       const si = (y * s + x) * 3
       const ti = (ty * W + tx) * 3
-      canvas[ti] = src[si]
-      canvas[ti + 1] = src[si + 1]
-      canvas[ti + 2] = src[si + 2]
+      canvas[ti] = Math.round(src[si] * dim)
+      canvas[ti + 1] = Math.round(src[si + 1] * dim)
+      canvas[ti + 2] = Math.round(src[si + 2] * dim)
     }
   }
 }
 
-/** Stamp an ASCII grid at a unit scale. Keys map a character to a colour. */
-function stamp(rows: string[], ox: number, oy: number, u: number, keys: Record<string, RGB>) {
-  rows.forEach((row, y) => {
-    for (let x = 0; x < row.length; x++) {
-      const c = keys[row[x]]
-      if (!c) continue
-      rect(ox + x * u, oy + y * u, u, u, c)
-    }
-  })
-}
-
 // ---------------------------------------------------------------------------
-// pieces
+// portraits
 // ---------------------------------------------------------------------------
 
 function decodeScenes() {
@@ -115,147 +108,102 @@ function portrait(x: Xployee, size: number, images: Map<string, unknown>): Uint8
   return buf
 }
 
-/**
- * An arrow, drawn rather than stamped so the shaft length is a parameter.
- *
- * The head is built from rows of decreasing height around the centre line,
- * which keeps every edge on the pixel grid — a rotated or anti-aliased
- * triangle would be the one soft thing in an otherwise hard-edged image.
- */
-function arrow(x0: number, cy: number, len: number, u: number, c: RGB) {
-  const shaftH = 2 * u
-  const headLen = 5 * u
-  rect(x0, cy - shaftH / 2, len - headLen, shaftH, c)
-  for (let i = 0; i < 5; i++) {
-    const h = (10 - i * 2) * u
-    rect(x0 + len - headLen + i * u, cy - h / 2, u, h, c)
-  }
+// ---------------------------------------------------------------------------
+// the formation
+// ---------------------------------------------------------------------------
+
+const crew = showcase()
+const pick = (tier: string, n: number) => crew.filter((x) => x.tier.id === tier)[n]
+
+interface Placed {
+  xployee: Xployee
+  size: number
+  /** Centre, so the ranks line up on their middles rather than their corners. */
+  cx: number
+  cy: number
+  dim: number
+  stroke: number
 }
 
 /**
- * The business: an office block with lit windows.
+ * Rank sizes, offsets and depth.
  *
- * Windows are green rather than the usual warm yellow — the diagram's whole
- * claim is that this is where the money is made, and reusing the money colour
- * ties the middle of the sentence to its end.
+ * `size` steps down about 15% a rank, which is enough to read as distance and
+ * gentle enough that the UNCOMMONs at the back still show their faces — the
+ * avatar is a 32-grid, so even the smallest here gives every pixel three
+ * screen pixels.
+ *
+ * `out` is horizontal displacement from centre and `up` is vertical.
+ *
+ * Each `out` is deliberately SMALLER than the sum of the two neighbouring half
+ * widths, so every rank is partly occluded by the one in front of it. That
+ * overlap is what makes this a formation with a leader; spaced far enough apart
+ * to clear each other — the first version of this file did exactly that — the
+ * same seven portraits read as a row of separate pictures at slightly different
+ * sizes, and the depth disappears no matter how they are dimmed.
  */
-function building(ox: number, oy: number, u: number) {
-  const BW = 17
-  const BH = 21
-
-  // antenna and roof
-  rect(ox + 8 * u, oy, u, 3 * u, STEEL_DK)
-  rect(ox + 1 * u, oy + 3 * u, (BW - 2) * u, u, STEEL_DK)
-  // body
-  rect(ox + 2 * u, oy + 4 * u, (BW - 4) * u, (BH - 4) * u, STEEL)
-  // window grid — three columns of pairs, skipping the doorway rows
-  for (let row = 0; row < 5; row++) {
-    for (let col = 0; col < 4; col++) {
-      rect(ox + (3 + col * 3) * u, oy + (6 + row * 3) * u, 2 * u, 2 * u, MONEY)
-    }
-  }
-  // doorway
-  rect(ox + 7 * u, oy + (BH - 4) * u, 3 * u, 4 * u, STEEL_DK)
-  rect(ox + 8 * u, oy + (BH - 3) * u, u, 3 * u, MONEY_DK)
-  // ground line, so it reads as standing rather than floating
-  rect(ox - u, oy + BH * u, (BW + 2) * u, u, STEEL_DK)
-}
-
-/** A dollar sign, authored as pixels so it matches everything else. */
-const DOLLAR = [
-  '.....##.....',
-  '.....##.....',
-  '..########..',
-  '.##########.',
-  '###..##..###',
-  '###..##.....',
-  '.###.##.....',
-  '..########..',
-  '....######..',
-  '.......####.',
-  '.....##..###',
-  '.....##..###',
-  '###..##..###',
-  '.##########.',
-  '..########..',
-  '.....##.....',
-  '.....##.....',
+const RANKS: { tier: string; size: number; out: number; up: number; dim: number; stroke: number }[] = [
+  { tier: 'entry', size: 104, out: 318, up: 132, dim: 0.74, stroke: 3 },
+  { tier: 'mid', size: 122, out: 224, up: 88, dim: 0.84, stroke: 3 },
+  { tier: 'expert', size: 144, out: 118, up: 42, dim: 0.93, stroke: 4 },
 ]
 
-// ---------------------------------------------------------------------------
-// compose
-// ---------------------------------------------------------------------------
+const LEAD_SIZE = 172
+
+const placed: Placed[] = []
+
+// Back to front, so the nearer rank always overlaps the one behind it. Drawing
+// this the other way round is the whole difference between a formation and a
+// pile of squares.
+for (const rank of RANKS) {
+  for (const side of [-1, 1]) {
+    const xployee = pick(rank.tier, side < 0 ? 0 : 1)
+    if (!xployee) continue
+    placed.push({
+      xployee,
+      size: rank.size,
+      cx: side * rank.out,
+      cy: -rank.up,
+      dim: rank.dim,
+      stroke: rank.stroke,
+    })
+  }
+}
+
+const lead = pick('xrated', 0)
+if (!lead) throw new Error('showcase() has no X-RATED — nothing can lead the formation')
+placed.push({ xployee: lead, size: LEAD_SIZE, cx: 0, cy: 0, dim: 1, stroke: 5 })
+
+// Centre the whole formation on the canvas rather than trusting the offsets to
+// balance. The ranks rise but the lead does not, so the shape's own centre sits
+// well above zero and hardcoding a y would leave it low in the frame.
+let top = Infinity
+let bottom = -Infinity
+for (const p of placed) {
+  top = Math.min(top, p.cy - p.size / 2 - p.stroke)
+  bottom = Math.max(bottom, p.cy + p.size / 2 + p.stroke)
+}
+const originX = Math.round(W / 2)
+const originY = Math.round(H / 2 - (top + bottom) / 2)
 
 const images = decodeScenes()
-const crew = collection()
-const byTier = (t: string) => crew.filter((x) => x.tier.id === t)
 
-/**
- * Six workers for the cluster, spanning every tier.
- *
- * The cluster is the subject of the sentence, so it has to read as "a workforce"
- * rather than "some pictures" — a mix of rarities does that where six of one
- * would not.
- */
-const cluster = [
-  byTier('xrated')[0],
-  byTier('mid')[0],
-  byTier('expert')[0],
-  byTier('entry')[0],
-  byTier('expert')[1],
-  byTier('xrated')[1],
-].filter(Boolean)
-
-const TILE = 104
-const GAP = 12
-const STROKE = 3
-const COLS = 3
-const ROWS = 2
-
-const clusterW = COLS * TILE + (COLS - 1) * GAP
-const clusterH = ROWS * TILE + (ROWS - 1) * GAP
-
-const U = 9 // pixel unit for the drawn pieces
-const buildingW = 17 * U
-const buildingH = 22 * U
-const dollarW = DOLLAR[0].length * U
-const arrowLen = 108
-const SPACE = 54
-
-const totalW = clusterW + SPACE + arrowLen + SPACE + buildingW + SPACE + arrowLen + SPACE + dollarW
-let x = Math.round((W - totalW) / 2)
-const cy = Math.round(H / 2)
-
-// 1 — the workforce
-const clusterTop = cy - Math.round(clusterH / 2)
-cluster.forEach((xp, i) => {
-  const col = i % COLS
-  const row = Math.floor(i / COLS)
-  const dx = x + col * (TILE + GAP)
-  const dy = clusterTop + row * (TILE + GAP)
-  rect(dx - STROKE, dy - STROKE, TILE + STROKE * 2, TILE + STROKE * 2, hex(xp.tier.color))
-  blit(portrait(xp, TILE, images), TILE, dx, dy)
-})
-x += clusterW + SPACE
-
-// 2 — in
-arrow(x, cy, arrowLen, 4, ARROW)
-x += arrowLen + SPACE
-
-// 3 — the business
-building(x, cy - Math.round(buildingH / 2), U)
-x += buildingW + SPACE
-
-// 4 — out
-arrow(x, cy, arrowLen, 4, ARROW)
-x += arrowLen + SPACE
-
-// 5 — the money
-stamp(DOLLAR, x, cy - Math.round((DOLLAR.length * U) / 2), U, { '#': MONEY })
+for (const p of placed) {
+  const size = p.size
+  const dx = Math.round(originX + p.cx - size / 2)
+  const dy = Math.round(originY + p.cy - size / 2)
+  // The rarity stroke, dimmed with its rank so the frame recedes along with the
+  // art it holds. A full-brightness border on a darkened portrait would read as
+  // a bright ring floating in front of it.
+  const border = hex(p.xployee.tier.color).map((v) => Math.round(v * p.dim)) as RGB
+  rect(dx - p.stroke, dy - p.stroke, size + p.stroke * 2, size + p.stroke * 2, border)
+  blit(portrait(p.xployee, size, images), size, dx, dy, p.dim)
+}
 
 const png = encodePng({ width: W, height: H, rgb: canvas })
 writeFileSync(join(ROOT, 'public', 'brand', 'x-banner.png'), png)
 
 console.log(`banner ${W}x${H}  ${(png.length / 1024).toFixed(1)} kB  -> public/brand/x-banner.png`)
-console.log('cluster: ' + cluster.map((c) => `#${String(c.id).padStart(4, '0')} ${c.tier.label}`).join('  '))
-void PAPER
+for (const p of placed) {
+  console.log(`  ${String(p.size).padStart(3)}px  ${serial(p.xployee.id)}  ${p.xployee.tier.label}`)
+}
