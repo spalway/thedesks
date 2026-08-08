@@ -96,6 +96,20 @@ create policy protocol_config_read
   to anon, authenticated
   using (true);
 
+-- BOTH are required, and this line was missing.
+--
+-- An RLS policy decides WHICH ROWS a role may see. It does not grant the role
+-- permission to touch the table at all — that is a separate GRANT, and without
+-- it Postgres refuses before RLS is ever consulted. PostgREST returns
+--   401  42501  permission denied for table protocol_config
+-- which reads like an auth problem and is not one.
+--
+-- The seven original tables get this in 20260805120200_rls_policies.sql.
+-- protocol_config was added later and did not follow the pattern, so on a fresh
+-- database every browser silently fell back to a disarmed config: no mint
+-- address, no project wallet, no RPC, no market links.
+grant select on public.protocol_config to anon, authenticated;
+
 -- No write policy of any kind. With RLS on and no permissive policy for
 -- insert/update/delete, the anon key cannot change these values — which matters
 -- more here than anywhere else in the schema, because whoever controls

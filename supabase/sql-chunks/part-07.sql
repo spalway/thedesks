@@ -986,6 +986,13 @@ drop policy if exists genesis_crew_read on public.genesis_crew;
 create policy genesis_crew_read
   on public.genesis_crew for select to anon, authenticated using (true);
 
+-- The policy alone is not enough. It decides which ROWS a role may see; the
+-- GRANT decides whether the role may touch the table at all, and Postgres
+-- checks the grant first. Without this, a read comes back as
+--   401  42501  permission denied for table genesis_crew
+-- which looks like an auth failure and is a missing privilege.
+grant select on public.genesis_crew to anon, authenticated;
+
 revoke insert, update, delete on public.genesis_crew from anon, authenticated;
 
 insert into public.genesis_crew (serial, owner, hired_at) values
@@ -3620,51 +3627,3 @@ create or replace function public.pair_key(p_x text, p_y text)
 returns text[]
 language sql immutable parallel safe strict set search_path = ''
 as $$ select case when p_x < p_y then array[p_x, p_y] else array[p_y, p_x] end $$;
-
-create or replace function public.send_friend_request(p_user_id uuid, p_to text, p_message text default null)
-returns jsonb
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_from text;
-  v_pair text[];
-  v_id   uuid;
-begin
-  v_from := public.actor_wallet(p_user_id);
-  if v_from is null then
-    return jsonb_build_object('ok', false, 'code', 'no-wallet',
-      'message', 'This session has no linked wallet. Nothing was sent.');
-  end if;
-  if p_to is null or p_to = v_from then
-    return jsonb_build_object('ok', false, 'code', 'bad-target',
-      'message', 'A friend request needs somebody else to send it to. Nothing was sent.');
-  end if;
-
-  v_pair := public.pair_key(v_from, p_to);
-  if exists (select 1 from public.friendships where wallet_a = v_pair[1] and wallet_b = v_pair[2]) then
-    return jsonb_build_object('ok', false, 'code', 'already-friends',
-      'message', 'These wallets are already connected. Nothing was sent.');
-  end if;
-
-  -- A pending request in EITHER direction is already an open question, and the
-  -- partial unique index would refuse the insert anyway. Answering here turns a
-  -- constraint violation into the correct sentence.
-  if exists (
-    select 1 from public.friend_requests
-     where status = 'pending'
-       and least(requester, addressee) = v_pair[1]
-       and greatest(requester, addressee) = v_pair[2]
-  ) then
-    return jsonb_build_object('ok', false, 'code', 'already-open',
-      'message', 'There is already an open request between these wallets. Nothing was sent.');
-  end if;
-
-  insert into public.friend_requests (requester, addressee, message)
-  values (v_from, p_to, nullif(btrim(coalesce(p_message, '')), ''))
-  returning id into v_id;
-
-  return jsonb_build_object('ok', true, 'request_id', v_id);
-end;
-$$;

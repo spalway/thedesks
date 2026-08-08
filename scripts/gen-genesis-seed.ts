@@ -68,6 +68,13 @@ drop policy if exists genesis_crew_read on public.genesis_crew;
 create policy genesis_crew_read
   on public.genesis_crew for select to anon, authenticated using (true);
 
+-- The policy alone is not enough. It decides which ROWS a role may see; the
+-- GRANT decides whether the role may touch the table at all, and Postgres
+-- checks the grant first. Without this, a read comes back as
+--   401  42501  permission denied for table genesis_crew
+-- which looks like an auth failure and is a missing privilege.
+grant select on public.genesis_crew to anon, authenticated;
+
 revoke insert, update, delete on public.genesis_crew from anon, authenticated;
 
 insert into public.genesis_crew (serial, owner, hired_at) values
