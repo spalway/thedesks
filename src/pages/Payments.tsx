@@ -5,9 +5,9 @@ import { SolLogo } from '../components/SolLogo'
 import { useWallet } from '../lib/wallet'
 import { useHoldings } from '../lib/useHoldings'
 import { useNow } from '../lib/useNow'
+import { usePrices } from '../lib/usePrices'
 import {
   MIN_REQUEST_USD,
-  SOL_USD,
   canRequest,
   clearRequests,
   createRequest,
@@ -41,7 +41,11 @@ export function Payments() {
     return subscribeRequests(sync)
   }, [address])
 
-  const earnings = earningsFor(holdings.xployees, now, requests)
+  // Live SOL, off the same Jupiter call the ticker uses. This is the one page
+  // where the rate decides how much somebody is owed, so it must not be a
+  // constant — see SOL_USD_FALLBACK in lib/prices.ts for what it used to be.
+  const prices = usePrices()
+  const earnings = earningsFor(holdings.xployees, now, requests, prices.solUsd)
 
   const submit = useCallback(() => {
     if (!address || !canRequest(earnings)) return
@@ -83,7 +87,11 @@ export function Payments() {
                 <span className="keep-case">{formatSol(earnings.claimableSol)}</span>
               </span>
             }
-            sub={`at $${num(SOL_USD)} / SOL`}
+            sub={
+              prices.source === 'live'
+                ? `at ${usd(prices.solUsd)} / SOL`
+                : `at ${usd(prices.solUsd)} / SOL · cached`
+            }
             accent="var(--color-money)"
           />
           <Stat

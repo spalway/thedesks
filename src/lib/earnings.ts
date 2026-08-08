@@ -20,14 +20,22 @@ import type { Xployee } from './xployee'
 /* ---- Rates and thresholds ---------------------------------------------- */
 
 /**
- * SOL/USD. PLACEHOLDER for a live feed — the app's price feed (lib/prices.ts)
- * covers xStocks, not SOL, so there is nothing to read yet.
+ * SOL/USD when the price feed cannot be reached.
  *
- * Deliberately the only place this rate appears: every conversion routes through
- * `usdToSol` / `solToUsd`, so replacing this constant with a fetched quote is a
- * one-line change rather than a hunt through two pages and a header pill.
+ * This WAS the only source — a hardcoded 180, labelled a placeholder, rendered
+ * to the visitor as "at $180 / SOL". Live SOL was $74.81 when that was caught,
+ * so the payout page overstated the rate 2.4x and understated every payout by
+ * the same factor. lib/prices.ts now reads SOL from the same Jupiter call it
+ * already makes for the xStocks, and the live rate is threaded in below.
+ *
+ * Re-exported from prices.ts rather than restated, so there is one fallback in
+ * the codebase and not two that can drift.
  */
-export const SOL_USD = 180
+export { SOL_USD_FALLBACK } from './prices'
+import { SOL_USD_FALLBACK } from './prices'
+
+/** @deprecated Pass the live rate from `usePrices().solUsd`. */
+export const SOL_USD = SOL_USD_FALLBACK
 
 /**
  * Smallest payout worth queueing, in USD. A payout is a human sending SOL and
@@ -38,14 +46,24 @@ export const MIN_REQUEST_USD = 0.01
 
 /* ---- Conversion --------------------------------------------------------- */
 
-export function usdToSol(usd: number): number {
-  if (!Number.isFinite(usd) || SOL_USD <= 0) return 0
-  return usd / SOL_USD
+/**
+ * The rate is a parameter with a fallback default, not a constant.
+ *
+ * A default keeps every existing caller working and keeps a dead price feed
+ * from rendering NaN; passing the live rate is what makes the figure true. The
+ * guard on the rate itself matters as much as the one on the amount — a feed
+ * returning 0 or NaN would otherwise turn a payout into Infinity.
+ */
+export function usdToSol(usd: number, solUsd: number = SOL_USD_FALLBACK): number {
+  const rate = Number.isFinite(solUsd) && solUsd > 0 ? solUsd : SOL_USD_FALLBACK
+  if (!Number.isFinite(usd) || rate <= 0) return 0
+  return usd / rate
 }
 
-export function solToUsd(sol: number): number {
+export function solToUsd(sol: number, solUsd: number = SOL_USD_FALLBACK): number {
+  const rate = Number.isFinite(solUsd) && solUsd > 0 ? solUsd : SOL_USD_FALLBACK
   if (!Number.isFinite(sol)) return 0
-  return sol * SOL_USD
+  return sol * rate
 }
 
 /** SOL amounts for display. Four decimals: a typical payout is ~0.07 SOL. */
@@ -89,7 +107,7 @@ export interface Earnings {
   requestedUsd: number
   /** What the wallet can ask for right now. Never negative. */
   claimableUsd: number
-  /** The same figure at the placeholder SOL rate. */
+  /** The same figure at the SOL rate passed in — live when the feed is up. */
   claimableSol: number
   /** How many xployees the figure is derived from — shown so the number is traceable. */
   crewSize: number
@@ -108,7 +126,12 @@ export function requestedUsd(requests: PaymentRequest[]): number {
   return requests.reduce((sum, r) => (r.status === 'rejected' ? sum : sum + r.amountUsd), 0)
 }
 
-export function earningsFor(xployees: Xployee[], now: number, requests: PaymentRequest[] = []): Earnings {
+export function earningsFor(
+  xployees: Xployee[],
+  now: number,
+  requests: PaymentRequest[] = [],
+  solUsd: number = SOL_USD_FALLBACK,
+): Earnings {
   const accrued = accruedUsd(xployees, now)
   const spoken = requestedUsd(requests)
   // Clamped rather than allowed to go negative: an operator can reject a request
@@ -118,7 +141,7 @@ export function earningsFor(xployees: Xployee[], now: number, requests: PaymentR
     accruedUsd: accrued,
     requestedUsd: spoken,
     claimableUsd,
-    claimableSol: usdToSol(claimableUsd),
+    claimableSol: usdToSol(claimableUsd, solUsd),
     crewSize: xployees.length,
   }
 }

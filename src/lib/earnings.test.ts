@@ -3,6 +3,7 @@ import {
   CLAIM_ID_RE,
   MIN_REQUEST_USD,
   SOL_USD,
+  SOL_USD_FALLBACK,
   accruedUsd,
   canRequest,
   createRequest,
@@ -16,7 +17,7 @@ import {
   usdToSol,
   type PaymentRequest,
 } from './earnings'
-import { EPOCH_MS, EPOCHS_PER_YEAR, accruedTotal } from './accrual'
+import { EPOCH_MS, EPOCHS_PER_YEAR, GENESIS, accruedTotal } from './accrual'
 import { buildXployee } from './xployee'
 
 const HIRED_AT = Date.UTC(2026, 0, 6)
@@ -212,5 +213,46 @@ describe('formatting', () => {
     expect(usdToSol(Number.NaN)).toBe(0)
     expect(solToUsd(Number.POSITIVE_INFINITY)).toBe(0)
     expect(roundCents(Number.NaN)).toBe(0)
+  })
+})
+
+describe('the SOL rate', () => {
+  // What went wrong: SOL_USD was a hardcoded 180 labelled "placeholder", and it
+  // was rendered to the visitor as "at $180 / SOL". Live SOL was $74.81 when
+  // that was caught — the payout page overstated the rate 2.4x and therefore
+  // understated every payout by the same factor, on the one page where the
+  // number is money.
+
+  it('converts at the rate it is given, not a constant', () => {
+    expect(usdToSol(150, 75)).toBe(2)
+    expect(usdToSol(150, 150)).toBe(1)
+    expect(solToUsd(2, 75)).toBe(150)
+  })
+
+  it('threads the live rate all the way to claimableSol', () => {
+    // The regression that matters. earningsFor computed claimableSol through a
+    // constant, so a correct live price on the page still produced a wrong SOL
+    // figure underneath it.
+    const crew = [buildXployee(0, GENESIS)]
+    const now = GENESIS + 90 * EPOCH_MS
+    const cheap = earningsFor(crew, now, [], 75)
+    const dear = earningsFor(crew, now, [], 150)
+    expect(cheap.claimableUsd).toBe(dear.claimableUsd)
+    // Half the price, twice the SOL.
+    expect(cheap.claimableSol).toBeCloseTo(dear.claimableSol * 2, 12)
+    expect(cheap.claimableSol).toBeCloseTo(cheap.claimableUsd / 75, 12)
+  })
+
+  it('falls back rather than dividing by a broken rate', () => {
+    // A feed returning 0 would make a payout Infinity; NaN would make it NaN.
+    // Both would reach a page that quotes what someone is owed.
+    for (const bad of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(`${bad}: ${usdToSol(300, bad)}`).toBe(`${bad}: ${300 / SOL_USD_FALLBACK}`)
+      expect(Number.isFinite(solToUsd(1, bad))).toBe(true)
+    }
+  })
+
+  it('defaults to the fallback when no rate is passed', () => {
+    expect(usdToSol(SOL_USD_FALLBACK)).toBe(1)
   })
 })
